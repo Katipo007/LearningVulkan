@@ -73,6 +73,20 @@ namespace TriangleApp_NS
 		return extensions;
 	}
 
+	[[nodiscard]] static bool IsSuitableDevice( [[maybe_unused]] const vk::PhysicalDevice& device)
+	{
+		[[maybe_unused]] const auto& properties{ device.getProperties() };
+		[[maybe_unused]] const auto& features{ device.getFeatures() };
+
+		// example: only accept dedicated devices which support geometry shaders.
+		//return properties.deviceType == vk::PhysicalDeviceType::eDiscreteGpu && features.geometryShader;
+
+		// could also rank all the devices and pick the best one by default.
+
+		// for now accept any device.
+		return true;
+	}
+
 	[[nodiscard]] static vk::UniqueInstance CreateInstance()
 	{
 		if (use_validation_layers && !CheckValidationLayerSupport()) {
@@ -131,6 +145,16 @@ void TriangleApp::OnInit([[maybe_unused]] std::span<std::string_view> cli)
 	pimpl->window = GLFWWindowHandle{ glfwCreateWindow(TriangleApp_NS::window_size.x, TriangleApp_NS::window_size.y, TriangleApp_NS::window_title.data(), nullptr, nullptr) };
 
 	pimpl->vk_instance = TriangleApp_NS::CreateInstance();
+
+	const auto physical_devices = pimpl->vk_instance->enumeratePhysicalDevices();
+	if (physical_devices.empty()) {
+		throw std::runtime_error("No physical devices available");
+	}
+
+	const auto best_device = std::find_if(std::begin(physical_devices), std::end(physical_devices), TriangleApp_NS::IsSuitableDevice);
+	if (best_device == std::end(physical_devices)) {
+		throw std::runtime_error("No suitable physical devices available");
+	}
 }
 
 void TriangleApp::MainLoop()
