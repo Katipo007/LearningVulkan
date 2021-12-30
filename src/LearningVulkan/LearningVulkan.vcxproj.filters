@@ -9,5 +9,6 @@
     <ClInclude Include="Configuration\Configuration.hpp" />
     <ClInclude Include="LibraryWrappers\GLFW.hpp" />
     <ClInclude Include="LibraryWrappers\glm.hpp" />
+    <ClInclude Include="LibraryWrappers\vulkan.hpp" />
   </ItemGroup>
 </Project>

@@ -92,6 +92,7 @@
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="Configuration\Configuration.hpp" />
+    <ClInclude Include="LibraryWrappers\vulkan.hpp" />
     <ClInclude Include="Precompiled\pch.hpp" />
     <ClInclude Include="LibraryWrappers\GLFW.hpp" />
     <ClInclude Include="LibraryWrappers\glm.hpp" />
