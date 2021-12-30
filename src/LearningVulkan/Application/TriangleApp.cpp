@@ -13,11 +13,44 @@ namespace TriangleApp_NS
 {
 	constexpr glm::ivec2 window_size{ 800, 600 };
 	constexpr std::string_view window_title{ "Vulkan window" };
+
+	[[nodiscard]] static vk::UniqueInstance CreateInstance()
+	{
+		vk::ApplicationInfo app_info{};
+		app_info.sType = vk::StructureType::eApplicationInfo;
+		app_info.pApplicationName = "Triangle";
+		app_info.applicationVersion = VK_MAKE_API_VERSION(0, 1, 0, 0);
+		app_info.pEngineName = "No Engine";
+		app_info.engineVersion = VK_MAKE_API_VERSION(0, 1, 0, 0);
+		app_info.apiVersion = VK_API_VERSION_1_2;
+
+		uint32_t glfw_extension_count{ 0 };
+		const char** glfw_extensions = glfwGetRequiredInstanceExtensions(&glfw_extension_count);
+
+		const auto extensions = vk::enumerateInstanceExtensionProperties(nullptr);
+#ifdef _DEBUG
+		std::cout << "Available extensions:\n";
+		for (const auto& extension : extensions)
+		{
+			std::cout << '\t' << extension.extensionName << '\n';
+		}
+#endif
+
+		vk::InstanceCreateInfo create_info{};
+		create_info.sType = vk::StructureType::eInstanceCreateInfo;
+		create_info.pApplicationInfo = &app_info;
+		create_info.enabledExtensionCount = glfw_extension_count;
+		create_info.ppEnabledExtensionNames = glfw_extensions;
+		create_info.enabledLayerCount = 0;
+
+		return vk::createInstanceUnique(create_info);
+	}
 }
 
 struct TriangleApp::Pimpl
 {
 	GLFWWindowHandle window{};
+	vk::UniqueInstance vk_instance;
 };
 
 TriangleApp::TriangleApp()
@@ -36,13 +69,7 @@ void TriangleApp::OnInit([[maybe_unused]] std::span<std::string_view> cli)
 	glfwWindowHint(GLFW_RESIZABLE, GLFW_FALSE);
 	pimpl->window = GLFWWindowHandle{ glfwCreateWindow(TriangleApp_NS::window_size.x, TriangleApp_NS::window_size.y, TriangleApp_NS::window_title.data(), nullptr, nullptr) };
 
-	uint32_t extension_count{ 0 };
-	if (const auto e = vk::enumerateInstanceExtensionProperties(nullptr, &extension_count, nullptr); e != vk::Result::eSuccess)
-	{
-		std::cerr << "Error result from vkEnumerateInstanceExtensionProperties: " << e << '\n';
-	}
-
-	std::cout << extension_count << " extensions supported\n";
+	pimpl->vk_instance = TriangleApp_NS::CreateInstance();
 }
 
 void TriangleApp::MainLoop()
@@ -55,6 +82,7 @@ void TriangleApp::MainLoop()
 
 void TriangleApp::OnDeinit()
 {
+	pimpl->vk_instance.reset();
 	pimpl->window.reset();
 
 	glfwTerminate();
