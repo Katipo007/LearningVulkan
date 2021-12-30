@@ -3,6 +3,7 @@
   <ItemGroup>
     <ClCompile Include="entry.cpp" />
     <ClCompile Include="Precompiled\pch.cpp" />
+    <ClCompile Include="Application\TriangleApp.cpp" />
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="Precompiled\pch.hpp" />
@@ -10,5 +11,7 @@
     <ClInclude Include="LibraryWrappers\GLFW.hpp" />
     <ClInclude Include="LibraryWrappers\glm.hpp" />
     <ClInclude Include="LibraryWrappers\vulkan.hpp" />
+    <ClInclude Include="App.hpp" />
+    <ClInclude Include="Application\TriangleApp.hpp" />
   </ItemGroup>
 </Project>

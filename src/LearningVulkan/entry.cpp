@@ -1,42 +1,37 @@
 
+#include <cassert>
 #include <cinttypes>
-#include <memory>
 #include <iostream>
+#include <string_view>
+#include <vector>
 
-#include "LibraryWrappers/GLFW.hpp"
-#include "LibraryWrappers/glm.hpp"
-#include "LibraryWrappers/vulkan.hpp"
-
-
-using GLFWWindowHandle = std::unique_ptr < GLFWwindow, decltype([](GLFWwindow* window) { glfwDestroyWindow(window); }) > ;
+#include "App.hpp"
+#include "Application/TriangleApp.hpp"
 
 int main([[maybe_unused]] const int argc, [[maybe_unused]] const char** argv)
 {
-	glfwInit();
-
-	glfwWindowHint( GLFW_CLIENT_API, GLFW_NO_API );
-	GLFWWindowHandle window{ glfwCreateWindow(800, 600, "Vulkan window", nullptr, nullptr) };
-
-	uint32_t extension_count{ 0 };
-	if (const auto e = vk::enumerateInstanceExtensionProperties(nullptr, &extension_count, nullptr); e != vk::Result::eSuccess)
-	{
-		std::cerr << "Error result from vkEnumerateInstanceExtensionProperties: " << e << '\n';
+	std::vector<std::string_view> command_line_args(static_cast<std::size_t>(argc));
+	for (int i = 0; i < argc; i++) {
+		command_line_args.emplace_back(argv[i]);
 	}
 
-	std::cout << extension_count << " extensions supported\n";
+	std::unique_ptr<App> app;
 
-	glm::mat4 matrix{};
-	glm::vec4 vec{};
-	[[maybe_unused]] auto test = matrix * vec;
+	app = std::make_unique<TriangleApp>();
 
-	while (!glfwWindowShouldClose(window.get()))
+	assert(app != nullptr);
+
+	try
 	{
-		glfwPollEvents();
+		app->Run(command_line_args);
+	}
+	catch (const std::exception& e)
+	{
+		std::cerr << "Unhandled exception while running application: " << e.what() << std::endl;
+		return EXIT_FAILURE;
 	}
 
-	window.reset();
+	app.reset();
 
-	glfwTerminate();
-
-	return 0;
+	return EXIT_SUCCESS;
 }

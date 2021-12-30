@@ -84,6 +84,7 @@
     </Link>
   </ItemDefinitionGroup>
   <ItemGroup>
+    <ClCompile Include="Application\TriangleApp.cpp" />
     <ClCompile Include="entry.cpp" />
     <ClCompile Include="Precompiled\pch.cpp">
       <PrecompiledHeader Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">Create</PrecompiledHeader>
@@ -91,7 +92,9 @@
     </ClCompile>
   </ItemGroup>
   <ItemGroup>
+    <ClInclude Include="Application\TriangleApp.hpp" />
     <ClInclude Include="Configuration\Configuration.hpp" />
+    <ClInclude Include="App.hpp" />
     <ClInclude Include="LibraryWrappers\vulkan.hpp" />
     <ClInclude Include="Precompiled\pch.hpp" />
     <ClInclude Include="LibraryWrappers\GLFW.hpp" />
