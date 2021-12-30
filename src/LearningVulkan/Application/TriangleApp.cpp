@@ -1,5 +1,8 @@
 
+#include <algorithm>
 #include <iostream>
+#include <string_view>
+#include <vector>
 
 #include "LearningVulkan/LibraryWrappers/GLFW.hpp"
 #include "LearningVulkan/LibraryWrappers/glm.hpp"
@@ -11,11 +14,40 @@ using GLFWWindowHandle = std::unique_ptr<GLFWwindow, decltype([](GLFWwindow* win
 
 namespace TriangleApp_NS
 {
+	using namespace std::string_view_literals;
+
 	constexpr glm::ivec2 window_size{ 800, 600 };
 	constexpr std::string_view window_title{ "Vulkan window" };
 
+	constexpr std::array validation_layers{ "VK_LAYER_KHRONOS_validation" };
+#ifdef _DEBUG
+	constexpr bool use_validation_layers{ true };
+#else
+	constexpr bool use_validation_layers{ false };
+#endif
+
+	[[nodiscard]] static bool CheckValidationLayerSupport()
+	{
+		const auto layers = vk::enumerateInstanceLayerProperties();
+		for (const std::string_view layer_name : validation_layers)
+		{
+			const auto it = std::find_if(std::begin(layers), std::end(layers), [layer_name](const vk::LayerProperties& layer) { return layer.layerName == layer_name; });
+			if (it == std::end(layers))
+			{
+				std::cout << "Missing support for validation layer with name '" << layer_name << "'\n";
+				return false;
+			}
+		}
+
+		return true;
+	}
+
 	[[nodiscard]] static vk::UniqueInstance CreateInstance()
 	{
+		if (use_validation_layers && !CheckValidationLayerSupport()) {
+			throw std::runtime_error("At least one of the validation layers requested is not available");
+		}
+
 		vk::ApplicationInfo app_info{};
 		app_info.sType = vk::StructureType::eApplicationInfo;
 		app_info.pApplicationName = "Triangle";
@@ -42,6 +74,12 @@ namespace TriangleApp_NS
 		create_info.enabledExtensionCount = glfw_extension_count;
 		create_info.ppEnabledExtensionNames = glfw_extensions;
 		create_info.enabledLayerCount = 0;
+
+		if (use_validation_layers)
+		{
+			create_info.setEnabledLayerCount(static_cast<uint32_t>(validation_layers.size()));
+			create_info.setPEnabledLayerNames(validation_layers);
+		}
 
 		return vk::createInstanceUnique(create_info);
 	}
