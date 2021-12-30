@@ -47,5 +47,7 @@ void TriangleApp::MainLoop()
 
 void TriangleApp::OnDeinit()
 {
+	pimpl->window.reset();
+
 	glfwTerminate();
 }
