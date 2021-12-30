@@ -39,10 +39,16 @@
   <ImportGroup Label="PropertySheets" Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">
     <Import Project="$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props" Condition="exists('$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props')" Label="LocalAppDataPlatform" />
     <Import Project="..\BaseProperties.props" />
+    <Import Project="..\glfw.props" />
+    <Import Project="..\glm.props" />
+    <Import Project="..\vulkan.props" />
   </ImportGroup>
   <ImportGroup Label="PropertySheets" Condition="'$(Configuration)|$(Platform)'=='Release|x64'">
     <Import Project="$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props" Condition="exists('$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props')" Label="LocalAppDataPlatform" />
     <Import Project="..\BaseProperties.props" />
+    <Import Project="..\glfw.props" />
+    <Import Project="..\glm.props" />
+    <Import Project="..\vulkan.props" />
   </ImportGroup>
   <PropertyGroup Label="UserMacros" />
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">
@@ -87,6 +93,8 @@
   <ItemGroup>
     <ClInclude Include="Configuration\Configuration.hpp" />
     <ClInclude Include="Precompiled\pch.hpp" />
+    <ClInclude Include="LibraryWrappers\GLFW.hpp" />
+    <ClInclude Include="LibraryWrappers\glm.hpp" />
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
   <ImportGroup Label="ExtensionTargets">

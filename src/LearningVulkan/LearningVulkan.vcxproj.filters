@@ -7,5 +7,7 @@
   <ItemGroup>
     <ClInclude Include="Precompiled\pch.hpp" />
     <ClInclude Include="Configuration\Configuration.hpp" />
+    <ClInclude Include="LibraryWrappers\GLFW.hpp" />
+    <ClInclude Include="LibraryWrappers\glm.hpp" />
   </ItemGroup>
 </Project>
