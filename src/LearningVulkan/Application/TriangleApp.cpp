@@ -26,6 +26,16 @@ namespace TriangleApp_NS
 	constexpr bool use_validation_layers{ false };
 #endif
 
+	static VKAPI_ATTR VkBool32 VKAPI_CALL OnVulkanDebugCallback(
+		[[maybe_unused]] VkDebugUtilsMessageSeverityFlagBitsEXT messageSeverity,
+		[[maybe_unused]] VkDebugUtilsMessageTypeFlagsEXT messageType,
+		const VkDebugUtilsMessengerCallbackDataEXT* pCallbackData,
+		[[maybe_unused]] void* pUserData)
+	{
+		std::cerr << "validation layer: " << pCallbackData->pMessage << std::endl;
+		return VK_FALSE;
+	}
+
 	[[nodiscard]] static bool CheckValidationLayerSupport()
 	{
 		const auto layers = vk::enumerateInstanceLayerProperties();
@@ -42,43 +52,57 @@ namespace TriangleApp_NS
 		return true;
 	}
 
+	[[nodiscard]] static std::vector<const char*> GetRequiredExtensions()
+	{
+		uint32_t glfw_extension_count{ 0 };
+		const char** glfw_extensions = glfwGetRequiredInstanceExtensions(&glfw_extension_count);
+
+		if (glfw_extensions == NULL)
+		{
+			const char* msg{};
+			const auto error = glfwGetError(&msg);
+			throw std::runtime_error("GLFW reports it does not support vulkan. glfwGetError code=" + std::to_string(error) + ", message='" + msg + "'");
+		}
+
+		std::vector<const char*> extensions(glfw_extensions, glfw_extensions + glfw_extension_count);
+
+		if (use_validation_layers) {
+			extensions.emplace_back(VK_EXT_DEBUG_UTILS_EXTENSION_NAME);
+		}
+
+		return extensions;
+	}
+
 	[[nodiscard]] static vk::UniqueInstance CreateInstance()
 	{
 		if (use_validation_layers && !CheckValidationLayerSupport()) {
 			throw std::runtime_error("At least one of the validation layers requested is not available");
 		}
 
-		vk::ApplicationInfo app_info{};
-		app_info.sType = vk::StructureType::eApplicationInfo;
-		app_info.pApplicationName = "Triangle";
-		app_info.applicationVersion = VK_MAKE_API_VERSION(0, 1, 0, 0);
-		app_info.pEngineName = "No Engine";
-		app_info.engineVersion = VK_MAKE_API_VERSION(0, 1, 0, 0);
-		app_info.apiVersion = VK_API_VERSION_1_2;
-
-		uint32_t glfw_extension_count{ 0 };
-		const char** glfw_extensions = glfwGetRequiredInstanceExtensions(&glfw_extension_count);
-
-		const auto extensions = vk::enumerateInstanceExtensionProperties(nullptr);
-#ifdef _DEBUG
-		std::cout << "Available extensions:\n";
-		for (const auto& extension : extensions)
+		const vk::ApplicationInfo app_info
 		{
-			std::cout << '\t' << extension.extensionName << '\n';
-		}
-#endif
+			"Triangle", VK_MAKE_API_VERSION(0, 1, 0, 0),
+			"No Engine", VK_MAKE_API_VERSION(0, 1, 0, 0),
+			VK_API_VERSION_1_2
+		};
+
+		const auto required_extensions{ GetRequiredExtensions() };
+
+		vk::DebugUtilsMessengerCreateInfoEXT debug_messenger_info
+		{
+			{},
+			vk::DebugUtilsMessageSeverityFlagBitsEXT::eVerbose | vk::DebugUtilsMessageSeverityFlagBitsEXT::eWarning | vk::DebugUtilsMessageSeverityFlagBitsEXT::eError,
+			vk::DebugUtilsMessageTypeFlagBitsEXT::eGeneral | vk::DebugUtilsMessageTypeFlagBitsEXT::ePerformance | vk::DebugUtilsMessageTypeFlagBitsEXT::eValidation,
+			TriangleApp_NS::OnVulkanDebugCallback
+		};
 
 		vk::InstanceCreateInfo create_info{};
-		create_info.sType = vk::StructureType::eInstanceCreateInfo;
-		create_info.pApplicationInfo = &app_info;
-		create_info.enabledExtensionCount = glfw_extension_count;
-		create_info.ppEnabledExtensionNames = glfw_extensions;
-		create_info.enabledLayerCount = 0;
-
-		if (use_validation_layers)
-		{
-			create_info.setEnabledLayerCount(static_cast<uint32_t>(validation_layers.size()));
+		create_info.setPApplicationInfo(&app_info);
+		create_info.setPEnabledExtensionNames(required_extensions);
+		if (use_validation_layers) {
 			create_info.setPEnabledLayerNames(validation_layers);
+			assert(create_info.pNext == nullptr);
+			create_info.setPNext(&debug_messenger_info);
 		}
 
 		return vk::createInstanceUnique(create_info);
@@ -88,7 +112,7 @@ namespace TriangleApp_NS
 struct TriangleApp::Pimpl
 {
 	GLFWWindowHandle window{};
-	vk::UniqueInstance vk_instance;
+	vk::UniqueInstance vk_instance{};
 };
 
 TriangleApp::TriangleApp()
@@ -100,7 +124,6 @@ TriangleApp::~TriangleApp() = default;
 
 void TriangleApp::OnInit([[maybe_unused]] std::span<std::string_view> cli)
 {
-
 	glfwInit();
 
 	glfwWindowHint(GLFW_CLIENT_API, GLFW_NO_API);
