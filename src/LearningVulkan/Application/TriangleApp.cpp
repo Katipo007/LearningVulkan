@@ -331,6 +331,7 @@ struct TriangleApp::Pimpl
 	vk::Queue graphics_queue{};
 	vk::Queue present_queue{};
 	vk::UniqueSwapchainKHR swap_chain{};
+	std::vector<vk::Image> swap_chain_images{};
 };
 
 TriangleApp::TriangleApp()
@@ -367,6 +368,7 @@ void TriangleApp::OnInit([[maybe_unused]] std::span<std::string_view> cli)
 	pimpl->present_queue = pimpl->vk_device->getQueue(indices.present_family.value(), 0);
 
 	pimpl->swap_chain = TriangleApp_NS::CreateSwapChain(*pimpl->vk_device, physical_device, pimpl->surface, pimpl->window.get());
+	pimpl->swap_chain_images = pimpl->vk_device->getSwapchainImagesKHR(*pimpl->swap_chain);
 }
 
 void TriangleApp::MainLoop()
@@ -379,6 +381,7 @@ void TriangleApp::MainLoop()
 
 void TriangleApp::OnDeinit()
 {
+	pimpl->swap_chain_images.clear();
 	pimpl->swap_chain.reset();
 	pimpl->present_queue = VK_NULL_HANDLE;
 	pimpl->graphics_queue = VK_NULL_HANDLE;
