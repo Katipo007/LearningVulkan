@@ -33,12 +33,17 @@ namespace TriangleApp_NS
 #endif
 
 	static VKAPI_ATTR VkBool32 VKAPI_CALL OnVulkanDebugCallback(
-		[[maybe_unused]] VkDebugUtilsMessageSeverityFlagBitsEXT messageSeverity,
-		[[maybe_unused]] VkDebugUtilsMessageTypeFlagsEXT messageType,
-		const VkDebugUtilsMessengerCallbackDataEXT* pCallbackData,
-		[[maybe_unused]] void* pUserData)
+		[[maybe_unused]] VkDebugUtilsMessageSeverityFlagBitsEXT severity,
+		[[maybe_unused]] VkDebugUtilsMessageTypeFlagsEXT type,
+		const VkDebugUtilsMessengerCallbackDataEXT* callback_data,
+		[[maybe_unused]] void* user_data)
 	{
-		std::cerr << "validation layer: " << pCallbackData->pMessage << std::endl;
+		std::cerr << "[Validation-layer]"
+			<< '[' << vk::to_string(static_cast<vk::DebugUtilsMessageTypeFlagBitsEXT>(type)) << ']'
+			<< '[' << vk::to_string(static_cast<vk::DebugUtilsMessageSeverityFlagBitsEXT>(severity)) << ']'
+			<< ' ' << callback_data->pMessage
+			<< '\n';
+
 		return VK_FALSE;
 	}
 
@@ -233,7 +238,7 @@ namespace TriangleApp_NS
 		vk::DebugUtilsMessengerCreateInfoEXT debug_messenger_info
 		{
 			{},
-			vk::DebugUtilsMessageSeverityFlagBitsEXT::eVerbose | vk::DebugUtilsMessageSeverityFlagBitsEXT::eWarning | vk::DebugUtilsMessageSeverityFlagBitsEXT::eError,
+			vk::DebugUtilsMessageSeverityFlagBitsEXT::eVerbose | vk::DebugUtilsMessageSeverityFlagBitsEXT::eInfo | vk::DebugUtilsMessageSeverityFlagBitsEXT::eWarning | vk::DebugUtilsMessageSeverityFlagBitsEXT::eError,
 			vk::DebugUtilsMessageTypeFlagBitsEXT::eGeneral | vk::DebugUtilsMessageTypeFlagBitsEXT::ePerformance | vk::DebugUtilsMessageTypeFlagBitsEXT::eValidation,
 			TriangleApp_NS::OnVulkanDebugCallback
 		};
