@@ -21,6 +21,7 @@ namespace TriangleApp_NS
 	constexpr glm::ivec2 window_size{ 800, 600 };
 	constexpr std::string_view window_title{ "Vulkan window" };
 
+	constexpr std::array required_device_extensions{ VK_KHR_SWAPCHAIN_EXTENSION_NAME };
 	constexpr std::array validation_layers{ "VK_LAYER_KHRONOS_validation" };
 #ifdef _DEBUG
 	constexpr bool use_validation_layers{ true };
@@ -75,6 +76,20 @@ namespace TriangleApp_NS
 		return extensions;
 	}
 
+	[[nodiscard]] static bool CheckDeviceExtensionSupport(const vk::PhysicalDevice& device)
+	{
+		const auto available_extensions{ device.enumerateDeviceExtensionProperties() };
+
+		// using this as a "checklist" of extensions still needing to be found.
+		std::set<std::string_view> required_extensions{ std::begin(required_device_extensions), std::end(required_device_extensions) };
+
+		for (const auto& extension : available_extensions) {
+			required_extensions.erase(std::string_view{ extension.extensionName });
+		}
+
+		return required_extensions.empty();
+	}
+
 	struct QueueFamilyIndices
 	{
 		std::optional<uint32_t> graphics_family{};
@@ -117,12 +132,14 @@ namespace TriangleApp_NS
 		[[maybe_unused]] const auto& features{ device.getFeatures() };
 		const auto family_indices{ FindQueueFamilies(device, surface) };
 
+		const bool supports_required_extensions{ CheckDeviceExtensionSupport(device) };
+
 		// example: only accept dedicated devices which support geometry shaders.
 		//return properties.deviceType == vk::PhysicalDeviceType::eDiscreteGpu && features.geometryShader;
 
 		// could also rank all the devices and pick the best one by default.
 
-		return family_indices.IsComplete();
+		return family_indices.IsComplete() && supports_required_extensions;
 	}
 
 	[[nodiscard]] static vk::UniqueInstance CreateInstance()
@@ -172,23 +189,22 @@ namespace TriangleApp_NS
 			throw std::runtime_error("No suitable physical devices available");
 		}
 
-		vk::DeviceCreateInfo create_info{};
-
 		const auto indices{ FindQueueFamilies(*best_device, surface) };
 		assert(indices.IsComplete());
 
-		const std::set<uint32_t> unique_families{ indices.graphics_family.value(), indices.present_family.value() };
-
 		const float priority{ 1.f };
 		std::vector<vk::DeviceQueueCreateInfo> queues_info;
+		const std::set<uint32_t> unique_families{ indices.graphics_family.value(), indices.present_family.value() };
 		for (uint32_t family : unique_families) {
 			queues_info.emplace_back(vk::DeviceQueueCreateFlags{}, family, 1U, &priority);
 		}
-		create_info.setQueueCreateInfos(queues_info);
 
 		vk::PhysicalDeviceFeatures features{};
-		create_info.setPEnabledFeatures(&features);
 
+		vk::DeviceCreateInfo create_info{};
+		create_info.setPEnabledExtensionNames(required_device_extensions);
+		create_info.setPEnabledFeatures(&features);
+		create_info.setQueueCreateInfos(queues_info);
 		if (use_validation_layers) {
 			create_info.setPEnabledLayerNames(validation_layers);
 		}
