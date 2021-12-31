@@ -8,8 +8,8 @@
 #include <string_view>
 #include <vector>
 
-#include "LearningVulkan/LibraryWrappers/GLFW.hpp"
-#include "LearningVulkan/LibraryWrappers/vulkan.hpp"
+#include "LearningVulkan/Bridges/GLFW.hpp"
+#include "LearningVulkan/Bridges/vulkan.hpp"
 
 #include "TriangleApp.hpp"
 
