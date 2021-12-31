@@ -7,6 +7,7 @@ export module Bridges.glm;
 
 namespace glm
 {
+	export using glm::vec;
 	export using glm::vec2;
 	export using glm::vec3;
 	export using glm::vec4;
