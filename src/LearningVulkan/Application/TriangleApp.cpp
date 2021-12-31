@@ -153,7 +153,7 @@ namespace TriangleApp_NS
 		return vk::createInstanceUnique(create_info);
 	}
 
-	[[nodiscard]] static vk::UniqueDevice CreateDevice( vk::Instance& instance )
+	[[nodiscard]] static std::pair<vk::UniqueDevice, QueueFamilyIndices> CreateDevice( vk::Instance& instance )
 	{
 		const auto physical_devices = instance.enumeratePhysicalDevices();
 		if (physical_devices.empty()) {
@@ -182,7 +182,7 @@ namespace TriangleApp_NS
 			create_info.setPEnabledLayerNames(validation_layers);
 		}
 
-		return best_device->createDeviceUnique(create_info);
+		return { best_device->createDeviceUnique(create_info), families };
 	}
 }
 
@@ -191,6 +191,7 @@ struct TriangleApp::Pimpl
 	GLFWWindowHandle window{};
 	vk::UniqueInstance vk_instance{};
 	vk::UniqueDevice vk_device{};
+	vk::Queue graphics_queue{};
 };
 
 TriangleApp::TriangleApp()
@@ -209,7 +210,12 @@ void TriangleApp::OnInit([[maybe_unused]] std::span<std::string_view> cli)
 	pimpl->window = GLFWWindowHandle{ glfwCreateWindow(TriangleApp_NS::window_size.x, TriangleApp_NS::window_size.y, TriangleApp_NS::window_title.data(), nullptr, nullptr) };
 
 	pimpl->vk_instance = TriangleApp_NS::CreateInstance();
-	pimpl->vk_device = TriangleApp_NS::CreateDevice(*pimpl->vk_instance);
+	TriangleApp_NS::QueueFamilyIndices indices{};
+	std::tie(pimpl->vk_device, indices) = TriangleApp_NS::CreateDevice(*pimpl->vk_instance);
+	assert(pimpl->vk_device);
+	assert(indices.IsComplete());
+
+	pimpl->graphics_queue = pimpl->vk_device->getQueue(indices.graphics_family.value(), 0);
 }
 
 void TriangleApp::MainLoop()
@@ -222,6 +228,7 @@ void TriangleApp::MainLoop()
 
 void TriangleApp::OnDeinit()
 {
+	pimpl->graphics_queue = nullptr;
 	pimpl->vk_device.reset();
 	pimpl->vk_instance.reset();
 	pimpl->window.reset();
