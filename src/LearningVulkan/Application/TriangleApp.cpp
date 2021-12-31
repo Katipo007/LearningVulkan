@@ -1,10 +1,12 @@
 
 #include <algorithm>
 #include <iostream>
+#include <limits>
 #include <optional>
+#include <tuple>
+#include <set>
 #include <string_view>
 #include <vector>
-#include <set>
 
 #include "LearningVulkan/LibraryWrappers/GLFW.hpp"
 #include "LearningVulkan/LibraryWrappers/glm.hpp"
@@ -102,6 +104,20 @@ namespace TriangleApp_NS
 		}
 	};
 
+	struct SwapChainSupportDetails
+	{
+		SwapChainSupportDetails() noexcept = default;
+		[[nodiscard]] SwapChainSupportDetails(const vk::PhysicalDevice& device, const vk::SurfaceKHR& surface)
+			: capabilities{ device.getSurfaceCapabilitiesKHR(surface)}
+			, formats{ device.getSurfaceFormatsKHR(surface)}
+			, present_modes{ device.getSurfacePresentModesKHR(surface)}
+		{}
+
+		vk::SurfaceCapabilitiesKHR capabilities{};
+		std::vector<vk::SurfaceFormatKHR> formats;
+		std::vector<vk::PresentModeKHR> present_modes;
+	};
+
 	[[nodiscard]] QueueFamilyIndices FindQueueFamilies(const vk::PhysicalDevice& device, const vk::SurfaceKHR& surface)
 	{
 		QueueFamilyIndices indices{};
@@ -126,6 +142,53 @@ namespace TriangleApp_NS
 		return indices;
 	}
 
+	[[nodiscard]] vk::SurfaceFormatKHR ChooseSwapSurfaceFormat(const std::span<const vk::SurfaceFormatKHR> available_formats)
+	{
+		for (auto& format : available_formats)
+		{
+			if (format.format == vk::Format::eB8G8R8A8Srgb
+				&& format.colorSpace == vk::ColorSpaceKHR::eSrgbNonlinear )
+			{
+				return format;
+			}
+		}
+
+		// fallback to the first entry
+		return available_formats.front();
+	}
+
+	[[nodiscard]] vk::PresentModeKHR ChoosePresentMode(const std::span<const vk::PresentModeKHR> available_modes)
+	{
+		// We prefer some modes over others
+		if (const auto it = std::find(std::begin(available_modes), std::end(available_modes), vk::PresentModeKHR::eMailbox); it != std::end(available_modes)) {
+			return *it;
+		}
+
+		return vk::PresentModeKHR::eFifo; // FIFO is guaranteed to be available
+	}
+
+	[[nodiscard]] vk::Extent2D ChooseSwapExtent(const vk::SurfaceCapabilitiesKHR& capabilities, GLFWwindow* window = nullptr)
+	{
+		if (capabilities.currentExtent.width != std::numeric_limits<uint32_t>::max())
+		{
+			return capabilities.currentExtent;
+		}
+		else if( window )
+		{
+			int window_w{}, window_h{};
+			glfwGetWindowSize(window, &window_w, &window_h);
+			return {
+				std::clamp(static_cast<uint32_t>(window_w), capabilities.minImageExtent.width, capabilities.maxImageExtent.width),
+				std::clamp(static_cast<uint32_t>(window_h), capabilities.minImageExtent.height, capabilities.maxImageExtent.height)
+			};
+		}
+		else
+		{
+			assert(false && "Unideal case");
+			return vk::Extent2D{ static_cast<uint32_t>(window_size.x), static_cast<uint32_t>(window_size.y) };
+		}
+	}
+
 	[[nodiscard]] static bool IsSuitableDevice(const vk::PhysicalDevice& device, const vk::SurfaceKHR& surface)
 	{
 		[[maybe_unused]] const auto& properties{ device.getProperties() };
@@ -133,13 +196,22 @@ namespace TriangleApp_NS
 		const auto family_indices{ FindQueueFamilies(device, surface) };
 
 		const bool supports_required_extensions{ CheckDeviceExtensionSupport(device) };
+		const bool swap_chain_adequite = [&](){
+			if (supports_required_extensions) {
+				const SwapChainSupportDetails swap_chain_details{ device, surface };
+				return !swap_chain_details.formats.empty() && !swap_chain_details.present_modes.empty();
+			}
+			return false;
+		}();
 
 		// example: only accept dedicated devices which support geometry shaders.
 		//return properties.deviceType == vk::PhysicalDeviceType::eDiscreteGpu && features.geometryShader;
 
 		// could also rank all the devices and pick the best one by default.
 
-		return family_indices.IsComplete() && supports_required_extensions;
+		return family_indices.IsComplete()
+			&& supports_required_extensions
+			&& swap_chain_adequite;
 	}
 
 	[[nodiscard]] static vk::UniqueInstance CreateInstance()
@@ -177,7 +249,44 @@ namespace TriangleApp_NS
 		return vk::createInstanceUnique(create_info);
 	}
 
-	[[nodiscard]] static std::pair<vk::UniqueDevice, QueueFamilyIndices> CreateDevice( vk::Instance& instance, const vk::SurfaceKHR& surface )
+	[[nodiscard]] vk::UniqueSwapchainKHR CreateSwapChain(vk::Device& device, const vk::PhysicalDevice& physical_device, const vk::SurfaceKHR& surface, GLFWwindow* window = nullptr)
+	{
+		SwapChainSupportDetails swap_chain_support_details{ physical_device, surface };
+		const auto surface_format{ ChooseSwapSurfaceFormat(swap_chain_support_details.formats) };
+		const auto present_mode{ ChoosePresentMode(swap_chain_support_details.present_modes) };
+		const auto extent{ ChooseSwapExtent(swap_chain_support_details.capabilities, window) };
+		const uint32_t max_supported_images{ (swap_chain_support_details.capabilities.maxImageCount > 0) ? swap_chain_support_details.capabilities.maxImageCount : std::numeric_limits<uint32_t>::max() };
+		const auto indices = FindQueueFamilies(physical_device, surface);
+		const auto family_indices = std::array{ indices.graphics_family.value(), indices.present_family.value() };
+
+		vk::SwapchainCreateInfoKHR create_info{};
+		create_info.setSurface(surface);
+		create_info.setMinImageCount(std::min(swap_chain_support_details.capabilities.minImageCount + 1, max_supported_images));
+		create_info.setImageFormat(surface_format.format);
+		create_info.setImageColorSpace(surface_format.colorSpace);
+		create_info.setImageExtent(extent);
+		create_info.setImageArrayLayers(1);
+		create_info.setImageUsage(vk::ImageUsageFlagBits::eColorAttachment);
+		if (indices.graphics_family.value() != indices.present_family.value())
+		{
+			create_info.setImageSharingMode(vk::SharingMode::eConcurrent);
+			create_info.setQueueFamilyIndices(family_indices);
+		}
+		else
+		{
+			create_info.setImageSharingMode(vk::SharingMode::eExclusive);
+			create_info.setQueueFamilyIndices({}); // Optional
+		}
+		create_info.setPreTransform(swap_chain_support_details.capabilities.currentTransform);
+		create_info.setCompositeAlpha(vk::CompositeAlphaFlagBitsKHR::eOpaque);
+		create_info.setPresentMode(present_mode);
+		create_info.setClipped(VK_TRUE);
+		create_info.setOldSwapchain(VK_NULL_HANDLE); // Previous swap chain which became invalidated (e.g. via window being resized). TODO
+
+		return device.createSwapchainKHRUnique(create_info);
+	}
+
+	[[nodiscard]] static std::tuple<vk::UniqueDevice, vk::PhysicalDevice, QueueFamilyIndices> CreateDevice(vk::Instance& instance, const vk::SurfaceKHR& surface)
 	{
 		const auto physical_devices = instance.enumeratePhysicalDevices();
 		if (physical_devices.empty()) {
@@ -209,7 +318,7 @@ namespace TriangleApp_NS
 			create_info.setPEnabledLayerNames(validation_layers);
 		}
 
-		return { best_device->createDeviceUnique(create_info), indices };
+		return { best_device->createDeviceUnique(create_info), *best_device, indices };
 	}
 }
 
@@ -217,10 +326,11 @@ struct TriangleApp::Pimpl
 {
 	GLFWWindowHandle window{};
 	vk::UniqueInstance vk_instance{};
+	vk::SurfaceKHR surface{};
 	vk::UniqueDevice vk_device{};
 	vk::Queue graphics_queue{};
 	vk::Queue present_queue{};
-	vk::SurfaceKHR surface{};
+	vk::UniqueSwapchainKHR swap_chain{};
 };
 
 TriangleApp::TriangleApp()
@@ -248,12 +358,15 @@ void TriangleApp::OnInit([[maybe_unused]] std::span<std::string_view> cli)
 	}
 
 	TriangleApp_NS::QueueFamilyIndices indices{};
-	std::tie(pimpl->vk_device, indices) = TriangleApp_NS::CreateDevice(*pimpl->vk_instance, surface);
+	vk::PhysicalDevice physical_device{};
+	std::tie(pimpl->vk_device, physical_device, indices) = TriangleApp_NS::CreateDevice(*pimpl->vk_instance, surface);
 	assert(pimpl->vk_device);
 	assert(indices.IsComplete());
 
 	pimpl->graphics_queue = pimpl->vk_device->getQueue(indices.graphics_family.value(), 0);
 	pimpl->present_queue = pimpl->vk_device->getQueue(indices.present_family.value(), 0);
+
+	pimpl->swap_chain = TriangleApp_NS::CreateSwapChain(*pimpl->vk_device, physical_device, pimpl->surface, pimpl->window.get());
 }
 
 void TriangleApp::MainLoop()
@@ -266,11 +379,12 @@ void TriangleApp::MainLoop()
 
 void TriangleApp::OnDeinit()
 {
-	pimpl->present_queue = nullptr;
-	pimpl->graphics_queue = nullptr;
+	pimpl->swap_chain.reset();
+	pimpl->present_queue = VK_NULL_HANDLE;
+	pimpl->graphics_queue = VK_NULL_HANDLE;
 	pimpl->vk_device.reset();
 	pimpl->vk_instance->destroySurfaceKHR(pimpl->surface);
-	pimpl->surface = nullptr;
+	pimpl->surface = VK_NULL_HANDLE;
 	pimpl->vk_instance.reset();
 	pimpl->window.reset();
 
