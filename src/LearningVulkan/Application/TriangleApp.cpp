@@ -4,6 +4,7 @@
 #include <optional>
 #include <string_view>
 #include <vector>
+#include <set>
 
 #include "LearningVulkan/LibraryWrappers/GLFW.hpp"
 #include "LearningVulkan/LibraryWrappers/glm.hpp"
@@ -77,22 +78,28 @@ namespace TriangleApp_NS
 	struct QueueFamilyIndices
 	{
 		std::optional<uint32_t> graphics_family{};
+		std::optional<uint32_t> present_family{};
 
 		bool IsComplete() const noexcept
 		{
-			return graphics_family.has_value();
+			return graphics_family.has_value()
+				&& present_family.has_value();
 		}
 	};
 
-	[[nodiscard]] QueueFamilyIndices FindQueueFamilies(const vk::PhysicalDevice& device)
+	[[nodiscard]] QueueFamilyIndices FindQueueFamilies(const vk::PhysicalDevice& device, const vk::SurfaceKHR& surface)
 	{
 		QueueFamilyIndices indices{};
 
 		const auto queue_families = device.getQueueFamilyProperties();
-		for (std::size_t idx{0}; const auto & properties : queue_families)
+		for (uint32_t idx{0}; const auto & properties : queue_families)
 		{
 			if (properties.queueFlags & vk::QueueFlagBits::eGraphics) {
-				indices.graphics_family = static_cast<uint32_t>(idx);
+				indices.graphics_family = idx;
+			}
+
+			if (device.getSurfaceSupportKHR(idx, surface)) {
+				indices.present_family = idx;
 			}
 
 			if (indices.IsComplete()) {
@@ -104,11 +111,11 @@ namespace TriangleApp_NS
 		return indices;
 	}
 
-	[[nodiscard]] static bool IsSuitableDevice(const vk::PhysicalDevice& device)
+	[[nodiscard]] static bool IsSuitableDevice(const vk::PhysicalDevice& device, const vk::SurfaceKHR& surface)
 	{
 		[[maybe_unused]] const auto& properties{ device.getProperties() };
 		[[maybe_unused]] const auto& features{ device.getFeatures() };
-		const auto family_indices{ FindQueueFamilies(device) };
+		const auto family_indices{ FindQueueFamilies(device, surface) };
 
 		// example: only accept dedicated devices which support geometry shaders.
 		//return properties.deviceType == vk::PhysicalDeviceType::eDiscreteGpu && features.geometryShader;
@@ -153,26 +160,30 @@ namespace TriangleApp_NS
 		return vk::createInstanceUnique(create_info);
 	}
 
-	[[nodiscard]] static std::pair<vk::UniqueDevice, QueueFamilyIndices> CreateDevice( vk::Instance& instance )
+	[[nodiscard]] static std::pair<vk::UniqueDevice, QueueFamilyIndices> CreateDevice( vk::Instance& instance, const vk::SurfaceKHR& surface )
 	{
 		const auto physical_devices = instance.enumeratePhysicalDevices();
 		if (physical_devices.empty()) {
 			throw std::runtime_error("No physical devices available");
 		}
 
-		const auto best_device = std::find_if(std::begin(physical_devices), std::end(physical_devices), TriangleApp_NS::IsSuitableDevice);
+		const auto best_device = std::find_if(std::begin(physical_devices), std::end(physical_devices), std::bind(TriangleApp_NS::IsSuitableDevice, std::placeholders::_1, surface));
 		if (best_device == std::end(physical_devices)) {
 			throw std::runtime_error("No suitable physical devices available");
 		}
 
 		vk::DeviceCreateInfo create_info{};
 
-		const auto families{ FindQueueFamilies(*best_device) };
-		assert(families.IsComplete());
+		const auto indices{ FindQueueFamilies(*best_device, surface) };
+		assert(indices.IsComplete());
+
+		const std::set<uint32_t> unique_families{ indices.graphics_family.value(), indices.present_family.value() };
 
 		const float priority{ 1.f };
 		std::vector<vk::DeviceQueueCreateInfo> queues_info;
-		queues_info.emplace_back(vk::DeviceQueueCreateFlags{}, families.graphics_family.value(), 1U, &priority);
+		for (uint32_t family : unique_families) {
+			queues_info.emplace_back(vk::DeviceQueueCreateFlags{}, family, 1U, &priority);
+		}
 		create_info.setQueueCreateInfos(queues_info);
 
 		vk::PhysicalDeviceFeatures features{};
@@ -182,7 +193,7 @@ namespace TriangleApp_NS
 			create_info.setPEnabledLayerNames(validation_layers);
 		}
 
-		return { best_device->createDeviceUnique(create_info), families };
+		return { best_device->createDeviceUnique(create_info), indices };
 	}
 }
 
@@ -192,7 +203,8 @@ struct TriangleApp::Pimpl
 	vk::UniqueInstance vk_instance{};
 	vk::UniqueDevice vk_device{};
 	vk::Queue graphics_queue{};
-	VkSurfaceKHR surface{};
+	vk::Queue present_queue{};
+	vk::SurfaceKHR surface{};
 };
 
 TriangleApp::TriangleApp()
@@ -211,16 +223,21 @@ void TriangleApp::OnInit([[maybe_unused]] std::span<std::string_view> cli)
 	pimpl->window = GLFWWindowHandle{ glfwCreateWindow(TriangleApp_NS::window_size.x, TriangleApp_NS::window_size.y, TriangleApp_NS::window_title.data(), nullptr, nullptr) };
 
 	pimpl->vk_instance = TriangleApp_NS::CreateInstance();
-	if (const auto result = glfwCreateWindowSurface(*pimpl->vk_instance, pimpl->window.get(), {}, &pimpl->surface); result != VK_SUCCESS) {
+	VkSurfaceKHR surface{};
+	if (const auto result = glfwCreateWindowSurface(*pimpl->vk_instance, pimpl->window.get(), {}, &surface); result != VK_SUCCESS) {
 		throw std::runtime_error("Failed to create window surface");
+	}
+	else {
+		pimpl->surface = surface;
 	}
 
 	TriangleApp_NS::QueueFamilyIndices indices{};
-	std::tie(pimpl->vk_device, indices) = TriangleApp_NS::CreateDevice(*pimpl->vk_instance);
+	std::tie(pimpl->vk_device, indices) = TriangleApp_NS::CreateDevice(*pimpl->vk_instance, surface);
 	assert(pimpl->vk_device);
 	assert(indices.IsComplete());
 
 	pimpl->graphics_queue = pimpl->vk_device->getQueue(indices.graphics_family.value(), 0);
+	pimpl->present_queue = pimpl->vk_device->getQueue(indices.present_family.value(), 0);
 }
 
 void TriangleApp::MainLoop()
@@ -233,6 +250,7 @@ void TriangleApp::MainLoop()
 
 void TriangleApp::OnDeinit()
 {
+	pimpl->present_queue = nullptr;
 	pimpl->graphics_queue = nullptr;
 	pimpl->vk_device.reset();
 	pimpl->vk_instance->destroySurfaceKHR(pimpl->surface);
