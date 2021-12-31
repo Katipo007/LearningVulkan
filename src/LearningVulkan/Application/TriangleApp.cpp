@@ -192,6 +192,7 @@ struct TriangleApp::Pimpl
 	vk::UniqueInstance vk_instance{};
 	vk::UniqueDevice vk_device{};
 	vk::Queue graphics_queue{};
+	VkSurfaceKHR surface{};
 };
 
 TriangleApp::TriangleApp()
@@ -210,6 +211,10 @@ void TriangleApp::OnInit([[maybe_unused]] std::span<std::string_view> cli)
 	pimpl->window = GLFWWindowHandle{ glfwCreateWindow(TriangleApp_NS::window_size.x, TriangleApp_NS::window_size.y, TriangleApp_NS::window_title.data(), nullptr, nullptr) };
 
 	pimpl->vk_instance = TriangleApp_NS::CreateInstance();
+	if (const auto result = glfwCreateWindowSurface(*pimpl->vk_instance, pimpl->window.get(), {}, &pimpl->surface); result != VK_SUCCESS) {
+		throw std::runtime_error("Failed to create window surface");
+	}
+
 	TriangleApp_NS::QueueFamilyIndices indices{};
 	std::tie(pimpl->vk_device, indices) = TriangleApp_NS::CreateDevice(*pimpl->vk_instance);
 	assert(pimpl->vk_device);
@@ -230,6 +235,8 @@ void TriangleApp::OnDeinit()
 {
 	pimpl->graphics_queue = nullptr;
 	pimpl->vk_device.reset();
+	pimpl->vk_instance->destroySurfaceKHR(pimpl->surface);
+	pimpl->surface = nullptr;
 	pimpl->vk_instance.reset();
 	pimpl->window.reset();
 
