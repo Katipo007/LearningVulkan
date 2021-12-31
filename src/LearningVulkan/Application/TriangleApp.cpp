@@ -152,12 +152,45 @@ namespace TriangleApp_NS
 
 		return vk::createInstanceUnique(create_info);
 	}
+
+	[[nodiscard]] static vk::UniqueDevice CreateDevice( vk::Instance& instance )
+	{
+		const auto physical_devices = instance.enumeratePhysicalDevices();
+		if (physical_devices.empty()) {
+			throw std::runtime_error("No physical devices available");
+		}
+
+		const auto best_device = std::find_if(std::begin(physical_devices), std::end(physical_devices), TriangleApp_NS::IsSuitableDevice);
+		if (best_device == std::end(physical_devices)) {
+			throw std::runtime_error("No suitable physical devices available");
+		}
+
+		vk::DeviceCreateInfo create_info{};
+
+		const auto families{ FindQueueFamilies(*best_device) };
+		assert(families.IsComplete());
+
+		const float priority{ 1.f };
+		std::vector<vk::DeviceQueueCreateInfo> queues_info;
+		queues_info.emplace_back(vk::DeviceQueueCreateFlags{}, families.graphics_family.value(), 1U, &priority);
+		create_info.setQueueCreateInfos(queues_info);
+
+		vk::PhysicalDeviceFeatures features{};
+		create_info.setPEnabledFeatures(&features);
+
+		if (use_validation_layers) {
+			create_info.setPEnabledLayerNames(validation_layers);
+		}
+
+		return best_device->createDeviceUnique(create_info);
+	}
 }
 
 struct TriangleApp::Pimpl
 {
 	GLFWWindowHandle window{};
 	vk::UniqueInstance vk_instance{};
+	vk::UniqueDevice vk_device{};
 };
 
 TriangleApp::TriangleApp()
@@ -176,16 +209,7 @@ void TriangleApp::OnInit([[maybe_unused]] std::span<std::string_view> cli)
 	pimpl->window = GLFWWindowHandle{ glfwCreateWindow(TriangleApp_NS::window_size.x, TriangleApp_NS::window_size.y, TriangleApp_NS::window_title.data(), nullptr, nullptr) };
 
 	pimpl->vk_instance = TriangleApp_NS::CreateInstance();
-
-	const auto physical_devices = pimpl->vk_instance->enumeratePhysicalDevices();
-	if (physical_devices.empty()) {
-		throw std::runtime_error("No physical devices available");
-	}
-
-	const auto best_device = std::find_if(std::begin(physical_devices), std::end(physical_devices), TriangleApp_NS::IsSuitableDevice);
-	if (best_device == std::end(physical_devices)) {
-		throw std::runtime_error("No suitable physical devices available");
-	}
+	pimpl->vk_device = TriangleApp_NS::CreateDevice(*pimpl->vk_instance);
 }
 
 void TriangleApp::MainLoop()
@@ -198,6 +222,7 @@ void TriangleApp::MainLoop()
 
 void TriangleApp::OnDeinit()
 {
+	pimpl->vk_device.reset();
 	pimpl->vk_instance.reset();
 	pimpl->window.reset();
 
