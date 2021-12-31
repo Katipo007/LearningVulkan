@@ -1,6 +1,7 @@
 
 #include <algorithm>
 #include <iostream>
+#include <optional>
 #include <string_view>
 #include <vector>
 
@@ -73,18 +74,48 @@ namespace TriangleApp_NS
 		return extensions;
 	}
 
-	[[nodiscard]] static bool IsSuitableDevice( [[maybe_unused]] const vk::PhysicalDevice& device)
+	struct QueueFamilyIndices
+	{
+		std::optional<uint32_t> graphics_family{};
+
+		bool IsComplete() const noexcept
+		{
+			return graphics_family.has_value();
+		}
+	};
+
+	[[nodiscard]] QueueFamilyIndices FindQueueFamilies(const vk::PhysicalDevice& device)
+	{
+		QueueFamilyIndices indices{};
+
+		const auto queue_families = device.getQueueFamilyProperties();
+		for (std::size_t idx{0}; const auto & properties : queue_families)
+		{
+			if (properties.queueFlags & vk::QueueFlagBits::eGraphics) {
+				indices.graphics_family = static_cast<uint32_t>(idx);
+			}
+
+			if (indices.IsComplete()) {
+				break;
+			}
+			++idx;
+		}
+
+		return indices;
+	}
+
+	[[nodiscard]] static bool IsSuitableDevice(const vk::PhysicalDevice& device)
 	{
 		[[maybe_unused]] const auto& properties{ device.getProperties() };
 		[[maybe_unused]] const auto& features{ device.getFeatures() };
+		const auto family_indices{ FindQueueFamilies(device) };
 
 		// example: only accept dedicated devices which support geometry shaders.
 		//return properties.deviceType == vk::PhysicalDeviceType::eDiscreteGpu && features.geometryShader;
 
 		// could also rank all the devices and pick the best one by default.
 
-		// for now accept any device.
-		return true;
+		return family_indices.IsComplete();
 	}
 
 	[[nodiscard]] static vk::UniqueInstance CreateInstance()
