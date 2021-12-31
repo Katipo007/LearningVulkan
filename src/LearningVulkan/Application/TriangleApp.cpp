@@ -9,11 +9,10 @@
 #include <vector>
 
 #include "LearningVulkan/Bridges/GLFW.hpp"
+#include "LearningVulkan/Bridges/glm.hpp"
 #include "LearningVulkan/Bridges/vulkan.hpp"
 
 #include "TriangleApp.hpp"
-
-import Bridges.glm;
 
 using GLFWWindowHandle = std::unique_ptr<GLFWwindow, decltype([](GLFWwindow* window) { glfwDestroyWindow(window); })>;
 

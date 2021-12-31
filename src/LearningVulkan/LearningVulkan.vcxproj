@@ -85,7 +85,7 @@
   </ItemDefinitionGroup>
   <ItemGroup>
     <ClCompile Include="Application\TriangleApp.cpp" />
-    <ClCompile Include="Bridges\glm.ixx" />
+    <ClCompile Include="Bridges\glm.hpp" />
     <ClCompile Include="Bridges\vulkan.hpp" />
     <ClCompile Include="entry.cpp" />
   </ItemGroup>
