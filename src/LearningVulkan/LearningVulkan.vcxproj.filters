@@ -2,13 +2,11 @@
 <Project ToolsVersion="4.0" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
   <ItemGroup>
     <ClCompile Include="entry.cpp" />
-    <ClCompile Include="Precompiled\pch.cpp" />
     <ClCompile Include="Application\TriangleApp.cpp" />
     <ClCompile Include="Bridges\glm.ixx" />
     <ClCompile Include="Bridges\vulkan.hpp" />
   </ItemGroup>
   <ItemGroup>
-    <ClInclude Include="Precompiled\pch.hpp" />
     <ClInclude Include="Configuration\Configuration.hpp" />
     <ClInclude Include="Bridges\GLFW.hpp" />
     <ClInclude Include="App.hpp" />

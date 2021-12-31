@@ -88,16 +88,11 @@
     <ClCompile Include="Bridges\glm.ixx" />
     <ClCompile Include="Bridges\vulkan.hpp" />
     <ClCompile Include="entry.cpp" />
-    <ClCompile Include="Precompiled\pch.cpp">
-      <PrecompiledHeader Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">Create</PrecompiledHeader>
-      <PrecompiledHeader Condition="'$(Configuration)|$(Platform)'=='Release|x64'">Create</PrecompiledHeader>
-    </ClCompile>
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="Application\TriangleApp.hpp" />
     <ClInclude Include="Configuration\Configuration.hpp" />
     <ClInclude Include="App.hpp" />
-    <ClInclude Include="Precompiled\pch.hpp" />
     <ClInclude Include="Bridges\GLFW.hpp" />
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
