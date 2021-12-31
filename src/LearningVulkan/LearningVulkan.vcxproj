@@ -85,6 +85,7 @@
   </ItemDefinitionGroup>
   <ItemGroup>
     <ClCompile Include="Application\TriangleApp.cpp" />
+    <ClCompile Include="Bridges\glm.ixx" />
     <ClCompile Include="entry.cpp" />
     <ClCompile Include="Precompiled\pch.cpp">
       <PrecompiledHeader Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">Create</PrecompiledHeader>
@@ -98,7 +99,6 @@
     <ClInclude Include="LibraryWrappers\vulkan.hpp" />
     <ClInclude Include="Precompiled\pch.hpp" />
     <ClInclude Include="LibraryWrappers\GLFW.hpp" />
-    <ClInclude Include="LibraryWrappers\glm.hpp" />
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
   <ImportGroup Label="ExtensionTargets">
