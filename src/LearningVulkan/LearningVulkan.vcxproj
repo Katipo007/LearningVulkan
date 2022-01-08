@@ -42,6 +42,7 @@
     <Import Project="..\glfw.props" />
     <Import Project="..\glm.props" />
     <Import Project="..\vulkan.props" />
+    <Import Project="..\shaderc.props" />
   </ImportGroup>
   <ImportGroup Label="PropertySheets" Condition="'$(Configuration)|$(Platform)'=='Release|x64'">
     <Import Project="$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props" Condition="exists('$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props')" Label="LocalAppDataPlatform" />
@@ -49,6 +50,7 @@
     <Import Project="..\glfw.props" />
     <Import Project="..\glm.props" />
     <Import Project="..\vulkan.props" />
+    <Import Project="..\shaderc.props" />
   </ImportGroup>
   <PropertyGroup Label="UserMacros" />
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">
@@ -91,6 +93,7 @@
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="Application\TriangleApp.hpp" />
+    <ClInclude Include="Bridges\shaderc.hpp" />
     <ClInclude Include="Configuration\Configuration.hpp" />
     <ClInclude Include="App.hpp" />
     <ClInclude Include="Bridges\GLFW.hpp" />

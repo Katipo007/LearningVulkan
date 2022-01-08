@@ -11,5 +11,6 @@
     <ClInclude Include="Bridges\GLFW.hpp" />
     <ClInclude Include="App.hpp" />
     <ClInclude Include="Application\TriangleApp.hpp" />
+    <ClInclude Include="Bridges\shaderc.hpp" />
   </ItemGroup>
 </Project>

@@ -11,6 +11,7 @@
 #include "LearningVulkan/Bridges/GLFW.hpp"
 #include "LearningVulkan/Bridges/glm.hpp"
 #include "LearningVulkan/Bridges/vulkan.hpp"
+#include "LearningVulkan/Bridges/shaderc.hpp"
 
 #include "TriangleApp.hpp"
 
@@ -28,10 +29,51 @@ namespace TriangleApp_NS
 #ifdef _DEBUG
 	constexpr bool use_validation_layers{ true };
 #else
-	constexpr bool use_validation_layers{ false };
+	constexpr bool use_validation_layers{ true };
 #endif
 
-	static VKAPI_ATTR VkBool32 VKAPI_CALL OnVulkanDebugCallback(
+	constexpr std::string_view vertex_shader_src
+	{
+		"#version 450\n"
+		"#extension GL_ARB_separate_shader_objects : enable\n"
+		"\n"
+		"layout(location = 0) out vec3 fragColor;\n"
+		"\n"
+		"vec2 positions[3] = vec2[](\n"
+		"	vec2(0.0, -0.5),\n"
+		"	vec2(0.5, 0.5),\n"
+		"	vec2(-0.5, 0.5)\n"
+		" );\n"
+		"\n"
+		"vec3 colors[3] = vec3[](\n"
+		"	vec3(1.0, 0.0, 0.0),\n"
+		"	vec3(0.0, 1.0, 0.0),\n"
+		"	vec3(0.0, 0.0, 1.0)\n"
+		");\n"
+		"\n"
+		"void main()\n"
+		"{\n"
+		"	gl_Position = vec4(positions[gl_VertexIndex], 0.0, 1.0);\n"
+		"	fragColor = colors[gl_VertexIndex];\n"
+		"}\n"
+	};
+
+	constexpr std::string_view fragment_shader_src
+	{
+		"#version 450\n"
+		"#extension GL_ARB_separate_shader_objects : enable\n"
+		"\n"
+		"layout(location = 0) in vec3 fragColor;\n"
+		"\n"
+		"layout(location = 0) out vec4 outColor;\n"
+		"\n"
+		"void main()\n"
+		"{\n"
+		"   outColor = vec4(fragColor, 1.0);\n"
+		"}\n"
+	};
+
+	VKAPI_ATTR VkBool32 VKAPI_CALL OnVulkanDebugCallback(
 		[[maybe_unused]] VkDebugUtilsMessageSeverityFlagBitsEXT severity,
 		[[maybe_unused]] VkDebugUtilsMessageTypeFlagsEXT type,
 		const VkDebugUtilsMessengerCallbackDataEXT* callback_data,
@@ -46,7 +88,7 @@ namespace TriangleApp_NS
 		return VK_FALSE;
 	}
 
-	[[nodiscard]] static bool CheckValidationLayerSupport()
+	[[nodiscard]] bool CheckValidationLayerSupport()
 	{
 		const auto layers = vk::enumerateInstanceLayerProperties();
 		for (const std::string_view layer_name : validation_layers)
@@ -62,7 +104,7 @@ namespace TriangleApp_NS
 		return true;
 	}
 
-	[[nodiscard]] static std::vector<const char*> GetRequiredExtensions()
+	[[nodiscard]] std::vector<const char*> GetRequiredExtensions()
 	{
 		uint32_t glfw_extension_count{ 0 };
 		const char** glfw_extensions = glfwGetRequiredInstanceExtensions(&glfw_extension_count);
@@ -83,7 +125,7 @@ namespace TriangleApp_NS
 		return extensions;
 	}
 
-	[[nodiscard]] static bool CheckDeviceExtensionSupport(const vk::PhysicalDevice& device)
+	[[nodiscard]] bool CheckDeviceExtensionSupport(const vk::PhysicalDevice& device)
 	{
 		const auto available_extensions{ device.enumerateDeviceExtensionProperties() };
 
@@ -194,7 +236,7 @@ namespace TriangleApp_NS
 		}
 	}
 
-	[[nodiscard]] static bool IsSuitableDevice(const vk::PhysicalDevice& device, const vk::SurfaceKHR& surface)
+	[[nodiscard]] bool IsSuitableDevice(const vk::PhysicalDevice& device, const vk::SurfaceKHR& surface)
 	{
 		[[maybe_unused]] const auto& properties{ device.getProperties() };
 		[[maybe_unused]] const auto& features{ device.getFeatures() };
@@ -219,10 +261,13 @@ namespace TriangleApp_NS
 			&& swap_chain_adequite;
 	}
 
-	[[nodiscard]] static vk::UniqueInstance CreateInstance()
+	[[nodiscard]] vk::UniqueInstance CreateInstance()
 	{
-		if (use_validation_layers && !CheckValidationLayerSupport()) {
-			throw std::runtime_error("At least one of the validation layers requested is not available");
+		if constexpr (use_validation_layers)
+		{
+			if (!CheckValidationLayerSupport()) {
+				throw std::runtime_error("At least one of the validation layers requested is not available");
+			}
 		}
 
 		const vk::ApplicationInfo app_info
@@ -291,7 +336,7 @@ namespace TriangleApp_NS
 		return std::make_tuple(device.createSwapchainKHRUnique(create_info), surface_format.format, extent);
 	}
 
-	[[nodiscard]] static std::tuple<vk::UniqueDevice, vk::PhysicalDevice, QueueFamilyIndices> CreateDevice(vk::Instance& instance, const vk::SurfaceKHR& surface)
+	[[nodiscard]] std::tuple<vk::UniqueDevice, vk::PhysicalDevice, QueueFamilyIndices> CreateDevice(vk::Instance& instance, const vk::SurfaceKHR& surface)
 	{
 		const auto physical_devices = instance.enumeratePhysicalDevices();
 		if (physical_devices.empty()) {
@@ -325,6 +370,65 @@ namespace TriangleApp_NS
 
 		return { best_device->createDeviceUnique(create_info), *best_device, indices };
 	}
+
+	[[nodiscard]] vk::UniqueShaderModule CompileShader(vk::Device& device, shaderc::Compiler& compiler, std::string_view src, shaderc_shader_kind kind, std::string_view name)
+	{
+		const auto result = compiler.CompileGlslToSpv(src.data(), src.size(), kind, name.data());
+
+		std::cout << "Shader '" << name << "' compiled with '" << result.GetNumErrors() << "' errors and '" << result.GetNumWarnings() << "' warnings." << '\n';
+
+		if (result.GetCompilationStatus() != shaderc_compilation_status::shaderc_compilation_status_success)
+		{
+			std::string_view status_type_msg{};
+			switch (result.GetCompilationStatus())
+			{
+				using enum shaderc_compilation_status;
+			case shaderc_compilation_status_success: status_type_msg = "Success"; break;
+			case shaderc_compilation_status_invalid_stage: status_type_msg = "Invalid Stage"; break;
+			case shaderc_compilation_status_compilation_error: status_type_msg = "Compilation Error"; break;
+			case shaderc_compilation_status_internal_error: status_type_msg = "Unexpected Failure"; break;
+			case shaderc_compilation_status_null_result_object: status_type_msg = "Null result object"; break;
+			case shaderc_compilation_status_invalid_assembly: status_type_msg = "Invalid Assembly"; break;
+			case shaderc_compilation_status_validation_error: status_type_msg = "Validation Error"; break;
+			case shaderc_compilation_status_transformation_error: status_type_msg = "Transformation Error"; break;
+			case shaderc_compilation_status_configuration_error: status_type_msg = "Configuration Error"; break;
+			default: status_type_msg = "Unrecognised error code"; break;
+			}
+
+			std::cerr << "Error compiling shader '" << name << "': " << status_type_msg << ". Message: " << result.GetErrorMessage() << '\n';
+		}
+
+		
+		const std::vector<uint32_t> shader_bytecode{ std::begin(result), std::end(result) };
+		return device.createShaderModuleUnique(vk::ShaderModuleCreateInfo{}.setCode(shader_bytecode));
+	}
+
+	[[nodiscard]] vk::UniquePipeline CreatePipeline(vk::Device& device, shaderc::Compiler& shader_compiler, std::string_view vertex_src, std::string_view fragment_src)
+	{
+		auto cache = device.createPipelineCacheUnique(vk::PipelineCacheCreateInfo{});
+
+		const auto vertex_module = CompileShader(device, shader_compiler, vertex_src, shaderc_shader_kind::shaderc_glsl_vertex_shader, "vertex_shader"); assert(vertex_module);
+		const auto fragment_module = CompileShader(device, shader_compiler, fragment_src, shaderc_shader_kind::shaderc_glsl_fragment_shader, "fragment_shader"); assert(fragment_module);
+
+		std::vector<vk::PipelineShaderStageCreateInfo> stages;
+
+		stages.push_back(vk::PipelineShaderStageCreateInfo{}
+			.setModule(*vertex_module)
+			.setPName("main")
+			.setStage(vk::ShaderStageFlagBits::eVertex));
+
+		stages.push_back(vk::PipelineShaderStageCreateInfo{}
+			.setModule(*fragment_module)
+			.setPName("main")
+			.setStage(vk::ShaderStageFlagBits::eFragment));
+
+		auto pipeline_info = vk::GraphicsPipelineCreateInfo{}
+			.setStages(stages);
+
+		auto [result, pipeline] = device.createGraphicsPipelineUnique(*cache, pipeline_info);
+		assert(result == vk::Result::eSuccess);
+		return std::move(pipeline);
+	}
 }
 
 struct TriangleApp::Pimpl
@@ -340,6 +444,7 @@ struct TriangleApp::Pimpl
 	vk::Format swap_chain_format{};
 	vk::Extent2D swap_chain_extent{};
 	std::vector<vk::UniqueImageView> swap_chain_image_views{};
+	vk::UniquePipeline pipeline{};
 };
 
 TriangleApp::TriangleApp()
@@ -384,6 +489,9 @@ void TriangleApp::OnInit([[maybe_unused]] std::span<std::string_view> cli)
 			info.setSubresourceRange(vk::ImageSubresourceRange{ vk::ImageAspectFlagBits::eColor, 0U, 1U, 0U, 1U });
 			return pimpl->vk_device->createImageViewUnique(info);
 		});
+
+	shaderc::Compiler shader_compiler{};
+	pimpl->pipeline = TriangleApp_NS::CreatePipeline(*pimpl->vk_device, shader_compiler, TriangleApp_NS::vertex_shader_src, TriangleApp_NS::fragment_shader_src);
 }
 
 void TriangleApp::MainLoop()
@@ -396,6 +504,7 @@ void TriangleApp::MainLoop()
 
 void TriangleApp::OnDeinit()
 {
+	pimpl->pipeline.reset();
 	pimpl->swap_chain_image_views.clear();
 	pimpl->swap_chain_extent = vk::Extent2D{};
 	pimpl->swap_chain_format = {};
