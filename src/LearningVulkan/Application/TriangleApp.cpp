@@ -403,7 +403,7 @@ namespace TriangleApp_NS
 		return device.createShaderModuleUnique(vk::ShaderModuleCreateInfo{}.setCode(shader_bytecode));
 	}
 
-	[[nodiscard]] vk::UniquePipeline CreatePipeline(vk::Device& device, shaderc::Compiler& shader_compiler, std::string_view vertex_src, std::string_view fragment_src)
+	[[nodiscard]] std::pair<vk::UniquePipeline,vk::UniquePipelineLayout> CreatePipeline(vk::Device& device, shaderc::Compiler& shader_compiler, vk::Extent2D extent, std::string_view vertex_src, std::string_view fragment_src)
 	{
 		auto cache = device.createPipelineCacheUnique(vk::PipelineCacheCreateInfo{});
 
@@ -415,19 +415,103 @@ namespace TriangleApp_NS
 		stages.push_back(vk::PipelineShaderStageCreateInfo{}
 			.setModule(*vertex_module)
 			.setPName("main")
-			.setStage(vk::ShaderStageFlagBits::eVertex));
+			.setStage(vk::ShaderStageFlagBits::eVertex))
+			;
 
 		stages.push_back(vk::PipelineShaderStageCreateInfo{}
 			.setModule(*fragment_module)
 			.setPName("main")
-			.setStage(vk::ShaderStageFlagBits::eFragment));
+			.setStage(vk::ShaderStageFlagBits::eFragment))
+			;
+
+		auto vertex_input_info = vk::PipelineVertexInputStateCreateInfo{}
+			.setVertexBindingDescriptions({})
+			.setVertexAttributeDescriptions({});
+
+		auto input_assembly = vk::PipelineInputAssemblyStateCreateInfo{}
+			.setTopology(vk::PrimitiveTopology::eTriangleList)
+			.setPrimitiveRestartEnable(VK_FALSE)
+			;
+
+		std::vector<vk::Viewport> viewports{ {0.f, 0.f, static_cast<float>(extent.width), static_cast<float>(extent.height), 0.f, 1.f} };
+		std::vector<vk::Rect2D> sissors{ vk::Rect2D{vk::Offset2D{0, 0}, extent} };
+
+		auto viewport_info = vk::PipelineViewportStateCreateInfo{}
+			.setViewports(viewports)
+			.setScissors(sissors)
+			;
+
+		auto rasterizer_info = vk::PipelineRasterizationStateCreateInfo{}
+			.setDepthClampEnable(VK_FALSE)
+			.setPolygonMode(vk::PolygonMode::eFill)
+			.setLineWidth(1.f)
+			.setCullMode(vk::CullModeFlagBits::eBack)
+			.setFrontFace(vk::FrontFace::eClockwise)
+			.setDepthBiasEnable(VK_FALSE)
+			.setDepthBiasConstantFactor(0.f)
+			.setDepthBiasClamp(0.f)
+			.setDepthBiasSlopeFactor(0.f)
+			;
+
+		auto multisampling = vk::PipelineMultisampleStateCreateInfo{}
+			.setSampleShadingEnable(VK_FALSE)
+			.setRasterizationSamples(vk::SampleCountFlagBits::e1)
+			.setMinSampleShading(1.f)
+			.setPSampleMask(nullptr)
+			.setAlphaToCoverageEnable(VK_FALSE)
+			.setAlphaToOneEnable(VK_FALSE)
+			;
+
+		auto depth_stencil_info = vk::PipelineDepthStencilStateCreateInfo{}
+			;
+
+		auto colour_blend_attachment = vk::PipelineColorBlendAttachmentState{}
+			.setColorWriteMask(vk::ColorComponentFlagBits::eR | vk::ColorComponentFlagBits::eG | vk::ColorComponentFlagBits::eB | vk::ColorComponentFlagBits::eA)
+			.setBlendEnable(VK_TRUE)
+			.setSrcColorBlendFactor(vk::BlendFactor::eSrcAlpha)
+			.setDstColorBlendFactor(vk::BlendFactor::eOneMinusSrcAlpha)
+			.setColorBlendOp(vk::BlendOp::eAdd)
+			.setSrcAlphaBlendFactor(vk::BlendFactor::eOne)
+			.setDstAlphaBlendFactor(vk::BlendFactor::eZero)
+			.setAlphaBlendOp(vk::BlendOp::eAdd)
+			;
+
+		auto colour_blending = vk::PipelineColorBlendStateCreateInfo{}
+			.setLogicOpEnable(VK_FALSE)
+			.setLogicOp(vk::LogicOp::eCopy)
+			.setAttachments(colour_blend_attachment)
+			.setBlendConstants({ 0, 0, 0, 0 })
+			;
+
+		std::vector<vk::DynamicState> dynamic_states = { vk::DynamicState::eViewport, vk::DynamicState::eLineWidth };
+		auto dynamic_state = vk::PipelineDynamicStateCreateInfo{}
+			.setDynamicStates(dynamic_states)
+			;
+
+		std::vector<vk::DescriptorSetLayout> layouts{};
+		std::vector<vk::PushConstantRange> push_constant_ranges{};
+		auto pipeline_layout = device.createPipelineLayoutUnique(
+			vk::PipelineLayoutCreateInfo{}
+			.setSetLayouts(layouts)
+			.setPushConstantRanges(push_constant_ranges)
+		);
 
 		auto pipeline_info = vk::GraphicsPipelineCreateInfo{}
-			.setStages(stages);
+			.setStages(stages)
+			.setPVertexInputState(&vertex_input_info)
+			.setPInputAssemblyState(&input_assembly)
+			.setPViewportState(&viewport_info)
+			.setPRasterizationState(&rasterizer_info)
+			.setPMultisampleState(&multisampling)
+			.setPDepthStencilState(&depth_stencil_info)
+			.setPColorBlendState(&colour_blending)
+			.setPDynamicState(&dynamic_state)
+			.setLayout(*pipeline_layout)
+			;
 
 		auto [result, pipeline] = device.createGraphicsPipelineUnique(*cache, pipeline_info);
 		assert(result == vk::Result::eSuccess);
-		return std::move(pipeline);
+		return { std::move(pipeline), std::move(pipeline_layout) };
 	}
 }
 
@@ -445,6 +529,7 @@ struct TriangleApp::Pimpl
 	vk::Extent2D swap_chain_extent{};
 	std::vector<vk::UniqueImageView> swap_chain_image_views{};
 	vk::UniquePipeline pipeline{};
+	vk::UniquePipelineLayout pipeline_layout{};
 };
 
 TriangleApp::TriangleApp()
@@ -491,7 +576,7 @@ void TriangleApp::OnInit([[maybe_unused]] std::span<std::string_view> cli)
 		});
 
 	shaderc::Compiler shader_compiler{};
-	pimpl->pipeline = TriangleApp_NS::CreatePipeline(*pimpl->vk_device, shader_compiler, TriangleApp_NS::vertex_shader_src, TriangleApp_NS::fragment_shader_src);
+	std::tie(pimpl->pipeline, pimpl->pipeline_layout) = TriangleApp_NS::CreatePipeline(*pimpl->vk_device, shader_compiler, pimpl->swap_chain_extent, TriangleApp_NS::vertex_shader_src, TriangleApp_NS::fragment_shader_src);
 }
 
 void TriangleApp::MainLoop()
@@ -505,6 +590,7 @@ void TriangleApp::MainLoop()
 void TriangleApp::OnDeinit()
 {
 	pimpl->pipeline.reset();
+	pimpl->pipeline_layout.reset();
 	pimpl->swap_chain_image_views.clear();
 	pimpl->swap_chain_extent = vk::Extent2D{};
 	pimpl->swap_chain_format = {};
