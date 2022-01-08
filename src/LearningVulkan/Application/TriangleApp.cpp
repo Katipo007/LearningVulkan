@@ -403,7 +403,40 @@ namespace TriangleApp_NS
 		return device.createShaderModuleUnique(vk::ShaderModuleCreateInfo{}.setCode(shader_bytecode));
 	}
 
-	[[nodiscard]] std::pair<vk::UniquePipeline,vk::UniquePipelineLayout> CreatePipeline(vk::Device& device, shaderc::Compiler& shader_compiler, vk::Extent2D extent, std::string_view vertex_src, std::string_view fragment_src)
+	[[nodiscard]] vk::UniqueRenderPass CreateRenderPass(vk::Device& device, vk::Format format)
+	{
+		std::vector<vk::AttachmentDescription> attachments;
+
+		attachments.push_back(vk::AttachmentDescription{}
+			.setFormat(format)
+			.setSamples(vk::SampleCountFlagBits::e1)
+			.setLoadOp(vk::AttachmentLoadOp::eClear)
+			.setStoreOp(vk::AttachmentStoreOp::eStore)
+			.setStencilLoadOp(vk::AttachmentLoadOp::eDontCare)
+			.setStencilStoreOp(vk::AttachmentStoreOp::eDontCare)
+			.setInitialLayout(vk::ImageLayout::eUndefined)
+			.setFinalLayout(vk::ImageLayout::ePresentSrcKHR)
+		);
+
+		std::vector<vk::AttachmentReference> colour_attachment_references{};
+		colour_attachment_references.push_back(vk::AttachmentReference{}
+			.setAttachment(0U)
+			.setLayout(vk::ImageLayout::eColorAttachmentOptimal)
+		);
+
+		std::vector<vk::SubpassDescription> subpasses{};
+		subpasses.push_back(vk::SubpassDescription{}
+			.setColorAttachments(colour_attachment_references)
+			.setPipelineBindPoint(vk::PipelineBindPoint::eGraphics)
+		);
+
+		return device.createRenderPassUnique(vk::RenderPassCreateInfo{}
+			.setAttachments(attachments)
+			.setSubpasses(subpasses)
+		);
+	}
+
+	[[nodiscard]] std::pair<vk::UniquePipeline,vk::UniquePipelineLayout> CreatePipeline(vk::Device& device, shaderc::Compiler& shader_compiler, vk::RenderPass render_pass, vk::Extent2D extent, std::string_view vertex_src, std::string_view fragment_src)
 	{
 		auto cache = device.createPipelineCacheUnique(vk::PipelineCacheCreateInfo{});
 
@@ -507,6 +540,7 @@ namespace TriangleApp_NS
 			.setPColorBlendState(&colour_blending)
 			.setPDynamicState(&dynamic_state)
 			.setLayout(*pipeline_layout)
+			.setRenderPass(render_pass)
 			;
 
 		auto [result, pipeline] = device.createGraphicsPipelineUnique(*cache, pipeline_info);
@@ -528,8 +562,9 @@ struct TriangleApp::Pimpl
 	vk::Format swap_chain_format{};
 	vk::Extent2D swap_chain_extent{};
 	std::vector<vk::UniqueImageView> swap_chain_image_views{};
-	vk::UniquePipeline pipeline{};
+	vk::UniqueRenderPass render_pass{};
 	vk::UniquePipelineLayout pipeline_layout{};
+	vk::UniquePipeline pipeline{};
 };
 
 TriangleApp::TriangleApp()
@@ -575,8 +610,10 @@ void TriangleApp::OnInit([[maybe_unused]] std::span<std::string_view> cli)
 			return pimpl->vk_device->createImageViewUnique(info);
 		});
 
+	pimpl->render_pass = TriangleApp_NS::CreateRenderPass(*pimpl->vk_device, pimpl->swap_chain_format);
+
 	shaderc::Compiler shader_compiler{};
-	std::tie(pimpl->pipeline, pimpl->pipeline_layout) = TriangleApp_NS::CreatePipeline(*pimpl->vk_device, shader_compiler, pimpl->swap_chain_extent, TriangleApp_NS::vertex_shader_src, TriangleApp_NS::fragment_shader_src);
+	std::tie(pimpl->pipeline, pimpl->pipeline_layout) = TriangleApp_NS::CreatePipeline(*pimpl->vk_device, shader_compiler, *pimpl->render_pass, pimpl->swap_chain_extent, TriangleApp_NS::vertex_shader_src, TriangleApp_NS::fragment_shader_src);
 }
 
 void TriangleApp::MainLoop()
@@ -591,6 +628,7 @@ void TriangleApp::OnDeinit()
 {
 	pimpl->pipeline.reset();
 	pimpl->pipeline_layout.reset();
+	pimpl->render_pass.reset();
 	pimpl->swap_chain_image_views.clear();
 	pimpl->swap_chain_extent = vk::Extent2D{};
 	pimpl->swap_chain_format = {};
