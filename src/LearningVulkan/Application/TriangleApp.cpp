@@ -549,7 +549,7 @@ namespace TriangleApp_NS
 		return { std::move(pipeline), std::move(pipeline_layout) };
 	}
 
-	[[nodiscard]] std::vector<vk::UniqueFramebuffer> CreateSwapChainFrameBuffers(vk::Device& device, vk::RenderPass& render_pass, vk::Extent2D swap_chain_extent, std::span<vk::UniqueImageView> swap_chain_image_views)
+	[[nodiscard]] std::vector<vk::UniqueFramebuffer> CreateSwapChainFrameBuffers(vk::Device& device, vk::RenderPass& render_pass, vk::Extent2D swap_chain_extent, std::span<const vk::UniqueImageView> swap_chain_image_views)
 	{
 		std::vector<vk::UniqueFramebuffer> frame_buffers{};
 		frame_buffers.reserve(swap_chain_image_views.size());
@@ -567,6 +567,23 @@ namespace TriangleApp_NS
 			});
 
 		return frame_buffers;
+	}
+
+	[[nodiscard]] vk::UniqueCommandPool CreateCommandPool( vk::Device& device, const QueueFamilyIndices& indices )
+	{
+		return device.createCommandPoolUnique(vk::CommandPoolCreateInfo{}
+			.setQueueFamilyIndex(indices.graphics_family.value())
+		);
+	}
+
+	[[nodiscard]] std::vector<vk::UniqueCommandBuffer> CreateCommandBuffers( vk::Device& device, vk::CommandPool& pool, std::span<const vk::UniqueFramebuffer> frame_buffers)
+	{
+		return device.allocateCommandBuffersUnique(
+			vk::CommandBufferAllocateInfo{}
+			.setCommandPool(pool)
+			.setLevel(vk::CommandBufferLevel::ePrimary)
+			.setCommandBufferCount(static_cast<uint32_t>(frame_buffers.size()))
+		);
 	}
 }
 
@@ -587,9 +604,13 @@ struct TriangleApp::Pimpl
 	vk::UniquePipelineLayout graphics_pipeline_layout{};
 	vk::UniquePipeline graphics_pipeline{};
 	std::vector<vk::UniqueFramebuffer> swap_chain_frame_buffers{};
+	vk::UniqueCommandPool command_pool{};
+	std::vector<vk::UniqueCommandBuffer> command_buffers;
 
 	~Pimpl()
 	{
+		command_buffers.clear();
+		command_pool.reset();
 		swap_chain_frame_buffers.clear();
 		graphics_pipeline.reset();
 		graphics_pipeline_layout.reset();
@@ -658,6 +679,37 @@ void TriangleApp::OnInit([[maybe_unused]] std::span<std::string_view> cli)
 	std::tie(pimpl->graphics_pipeline, pimpl->graphics_pipeline_layout) = TriangleApp_NS::CreatePipeline(*pimpl->vk_device, shader_compiler, *pimpl->render_pass, pimpl->swap_chain_extent, TriangleApp_NS::vertex_shader_src, TriangleApp_NS::fragment_shader_src);
 
 	pimpl->swap_chain_frame_buffers = TriangleApp_NS::CreateSwapChainFrameBuffers(*pimpl->vk_device, *pimpl->render_pass, pimpl->swap_chain_extent, pimpl->swap_chain_image_views);
+	pimpl->command_pool = TriangleApp_NS::CreateCommandPool(*pimpl->vk_device, indices);
+
+	// Fill command buffers
+	for (std::size_t idx{ 0 }; auto & buffer : pimpl->command_buffers)
+	{
+		// Begin recording
+		buffer->begin(vk::CommandBufferBeginInfo{}
+			.setFlags({})
+			.setPInheritanceInfo(nullptr)
+		);
+
+		std::vector<vk::ClearValue> clear_colours{ vk::ClearColorValue{ std::array<float,4>{0.f, 0.f, 0.f, 0.f} } };
+
+		// Starting a render pass
+		buffer->beginRenderPass(vk::RenderPassBeginInfo{}
+			.setRenderPass(*pimpl->render_pass)
+			.setFramebuffer(*pimpl->swap_chain_frame_buffers.at(idx))
+			.setRenderArea({ {0, 0}, pimpl->swap_chain_extent })
+			.setClearValues(clear_colours),
+			vk::SubpassContents::eInline
+		);
+
+		buffer->bindPipeline(vk::PipelineBindPoint::eGraphics, *pimpl->graphics_pipeline);
+
+		buffer->draw(3, 1, 0, 0);
+
+		// End recording
+		buffer->end();
+
+		++idx;
+	}
 }
 
 void TriangleApp::MainLoop()
