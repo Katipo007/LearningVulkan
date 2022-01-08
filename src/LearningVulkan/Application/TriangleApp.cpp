@@ -15,8 +15,6 @@
 
 #include "TriangleApp.hpp"
 
-using GLFWWindowHandle = std::unique_ptr<GLFWwindow, decltype([](GLFWwindow* window) { glfwDestroyWindow(window); })>;
-
 namespace TriangleApp_NS
 {
 	using namespace std::string_view_literals;
@@ -574,7 +572,7 @@ namespace TriangleApp_NS
 
 struct TriangleApp::Pimpl
 {
-	GLFWWindowHandle window{};
+	std::unique_ptr<GLFWwindow, decltype([](GLFWwindow* window) { glfwDestroyWindow(window); })> window{};
 	vk::UniqueInstance vk_instance{};
 	vk::UniqueSurfaceKHR surface{};
 	vk::UniqueDevice vk_device{};
@@ -623,7 +621,7 @@ void TriangleApp::OnInit([[maybe_unused]] std::span<std::string_view> cli)
 
 	glfwWindowHint(GLFW_CLIENT_API, GLFW_NO_API);
 	glfwWindowHint(GLFW_RESIZABLE, GLFW_FALSE);
-	pimpl->window = GLFWWindowHandle{ glfwCreateWindow(TriangleApp_NS::window_size.x, TriangleApp_NS::window_size.y, TriangleApp_NS::window_title.data(), nullptr, nullptr) };
+	pimpl->window.reset(glfwCreateWindow(TriangleApp_NS::window_size.x, TriangleApp_NS::window_size.y, TriangleApp_NS::window_title.data(), nullptr, nullptr));
 
 	pimpl->vk_instance = TriangleApp_NS::CreateInstance();
 	
