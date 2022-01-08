@@ -339,6 +339,7 @@ struct TriangleApp::Pimpl
 	std::vector<vk::Image> swap_chain_images{};
 	vk::Format swap_chain_format{};
 	vk::Extent2D swap_chain_extent{};
+	std::vector<vk::UniqueImageView> swap_chain_image_views{};
 };
 
 TriangleApp::TriangleApp()
@@ -376,6 +377,13 @@ void TriangleApp::OnInit([[maybe_unused]] std::span<std::string_view> cli)
 
 	std::tie(pimpl->swap_chain, pimpl->swap_chain_format, pimpl->swap_chain_extent) = TriangleApp_NS::CreateSwapChain(*pimpl->vk_device, physical_device, pimpl->surface, pimpl->window.get());
 	pimpl->swap_chain_images = pimpl->vk_device->getSwapchainImagesKHR(*pimpl->swap_chain);
+	pimpl->swap_chain_image_views.reserve(pimpl->swap_chain_images.size());
+	std::transform(std::begin(pimpl->swap_chain_images), std::end(pimpl->swap_chain_images), std::back_inserter(pimpl->swap_chain_image_views), [&](vk::Image& image)
+		{
+			vk::ImageViewCreateInfo info{ {}, image, vk::ImageViewType::e2D, pimpl->swap_chain_format };
+			info.setSubresourceRange(vk::ImageSubresourceRange{ vk::ImageAspectFlagBits::eColor, 0U, 1U, 0U, 1U });
+			return pimpl->vk_device->createImageViewUnique(info);
+		});
 }
 
 void TriangleApp::MainLoop()
@@ -388,6 +396,7 @@ void TriangleApp::MainLoop()
 
 void TriangleApp::OnDeinit()
 {
+	pimpl->swap_chain_image_views.clear();
 	pimpl->swap_chain_extent = vk::Extent2D{};
 	pimpl->swap_chain_format = {};
 	pimpl->swap_chain_images.clear();
