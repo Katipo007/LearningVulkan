@@ -556,7 +556,7 @@ struct TriangleApp::Pimpl
 {
 	GLFWWindowHandle window{};
 	vk::UniqueInstance vk_instance{};
-	vk::SurfaceKHR surface{};
+	vk::UniqueSurfaceKHR surface{};
 	vk::UniqueDevice vk_device{};
 	vk::Queue graphics_queue{};
 	vk::Queue present_queue{};
@@ -568,6 +568,25 @@ struct TriangleApp::Pimpl
 	vk::UniqueRenderPass render_pass{};
 	vk::UniquePipelineLayout graphics_pipeline_layout{};
 	vk::UniquePipeline graphics_pipeline{};
+
+	~Pimpl()
+	{
+		swap_chain_frame_buffers.clear();
+		graphics_pipeline.reset();
+		graphics_pipeline_layout.reset();
+		render_pass.reset();
+		swap_chain_image_views.clear();
+		swap_chain_extent = vk::Extent2D{};
+		swap_chain_format = {};
+		swap_chain_images.clear();
+		swap_chain.reset();
+		present_queue = VK_NULL_HANDLE;
+		graphics_queue = VK_NULL_HANDLE;
+		vk_device.reset();
+		surface.reset();
+		vk_instance.reset();
+		window.reset();
+	}
 };
 
 TriangleApp::TriangleApp()
@@ -586,12 +605,13 @@ void TriangleApp::OnInit([[maybe_unused]] std::span<std::string_view> cli)
 	pimpl->window = GLFWWindowHandle{ glfwCreateWindow(TriangleApp_NS::window_size.x, TriangleApp_NS::window_size.y, TriangleApp_NS::window_title.data(), nullptr, nullptr) };
 
 	pimpl->vk_instance = TriangleApp_NS::CreateInstance();
+	
 	VkSurfaceKHR surface{};
 	if (const auto result = glfwCreateWindowSurface(*pimpl->vk_instance, pimpl->window.get(), {}, &surface); result != VK_SUCCESS) {
 		throw std::runtime_error("Failed to create window surface");
 	}
 	else {
-		pimpl->surface = surface;
+		pimpl->surface = vk::UniqueSurfaceKHR(surface, { pimpl->vk_instance.get() });
 	}
 
 	TriangleApp_NS::QueueFamilyIndices indices{};
@@ -603,7 +623,7 @@ void TriangleApp::OnInit([[maybe_unused]] std::span<std::string_view> cli)
 	pimpl->graphics_queue = pimpl->vk_device->getQueue(indices.graphics_family.value(), 0);
 	pimpl->present_queue = pimpl->vk_device->getQueue(indices.present_family.value(), 0);
 
-	std::tie(pimpl->swap_chain, pimpl->swap_chain_format, pimpl->swap_chain_extent) = TriangleApp_NS::CreateSwapChain(*pimpl->vk_device, physical_device, pimpl->surface, pimpl->window.get());
+	std::tie(pimpl->swap_chain, pimpl->swap_chain_format, pimpl->swap_chain_extent) = TriangleApp_NS::CreateSwapChain(*pimpl->vk_device, physical_device, *pimpl->surface, pimpl->window.get());
 	pimpl->swap_chain_images = pimpl->vk_device->getSwapchainImagesKHR(*pimpl->swap_chain);
 	pimpl->swap_chain_image_views.reserve(pimpl->swap_chain_images.size());
 	std::transform(std::begin(pimpl->swap_chain_images), std::end(pimpl->swap_chain_images), std::back_inserter(pimpl->swap_chain_image_views), [&](vk::Image& image)
@@ -629,21 +649,7 @@ void TriangleApp::MainLoop()
 
 void TriangleApp::OnDeinit()
 {
-	pimpl->graphics_pipeline.reset();
-	pimpl->graphics_pipeline_layout.reset();
-	pimpl->render_pass.reset();
-	pimpl->swap_chain_image_views.clear();
-	pimpl->swap_chain_extent = vk::Extent2D{};
-	pimpl->swap_chain_format = {};
-	pimpl->swap_chain_images.clear();
-	pimpl->swap_chain.reset();
-	pimpl->present_queue = VK_NULL_HANDLE;
-	pimpl->graphics_queue = VK_NULL_HANDLE;
-	pimpl->vk_device.reset();
-	pimpl->vk_instance->destroySurfaceKHR(pimpl->surface);
-	pimpl->surface = VK_NULL_HANDLE;
-	pimpl->vk_instance.reset();
-	pimpl->window.reset();
+	pimpl.reset();
 
 	glfwTerminate();
 }
