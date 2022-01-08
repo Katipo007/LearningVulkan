@@ -606,27 +606,6 @@ struct TriangleApp::Pimpl
 	std::vector<vk::UniqueFramebuffer> swap_chain_frame_buffers{};
 	vk::UniqueCommandPool command_pool{};
 	std::vector<vk::UniqueCommandBuffer> command_buffers;
-
-	~Pimpl()
-	{
-		command_buffers.clear();
-		command_pool.reset();
-		swap_chain_frame_buffers.clear();
-		graphics_pipeline.reset();
-		graphics_pipeline_layout.reset();
-		render_pass.reset();
-		swap_chain_image_views.clear();
-		swap_chain_extent = vk::Extent2D{};
-		swap_chain_format = {};
-		swap_chain_images.clear();
-		swap_chain.reset();
-		present_queue = VK_NULL_HANDLE;
-		graphics_queue = VK_NULL_HANDLE;
-		vk_device.reset();
-		surface.reset();
-		vk_instance.reset();
-		window.reset();
-	}
 };
 
 TriangleApp::TriangleApp()
