@@ -403,9 +403,8 @@ namespace TriangleApp_NS
 
 	[[nodiscard]] vk::UniqueRenderPass CreateRenderPass(vk::Device& device, vk::Format format)
 	{
-		std::vector<vk::AttachmentDescription> attachments;
-
-		attachments.push_back(vk::AttachmentDescription{}
+		std::array attachments{
+			vk::AttachmentDescription{}
 			.setFormat(format)
 			.setSamples(vk::SampleCountFlagBits::e1)
 			.setLoadOp(vk::AttachmentLoadOp::eClear)
@@ -414,23 +413,34 @@ namespace TriangleApp_NS
 			.setStencilStoreOp(vk::AttachmentStoreOp::eDontCare)
 			.setInitialLayout(vk::ImageLayout::eUndefined)
 			.setFinalLayout(vk::ImageLayout::ePresentSrcKHR)
-		);
+		};
 
-		std::vector<vk::AttachmentReference> colour_attachment_references{};
-		colour_attachment_references.push_back(vk::AttachmentReference{}
+		std::array colour_attachment_references{
+			vk::AttachmentReference{}
 			.setAttachment(0U)
 			.setLayout(vk::ImageLayout::eColorAttachmentOptimal)
-		);
+		};
 
-		std::vector<vk::SubpassDescription> subpasses{};
-		subpasses.push_back(vk::SubpassDescription{}
+		std::array subpasses{
+			vk::SubpassDescription{}
 			.setColorAttachments(colour_attachment_references)
 			.setPipelineBindPoint(vk::PipelineBindPoint::eGraphics)
-		);
+		};
+
+		std::array dependances{
+			vk::SubpassDependency{}
+			.setSrcSubpass(VK_SUBPASS_EXTERNAL)
+			.setDstSubpass(0U)
+			.setSrcStageMask(vk::PipelineStageFlagBits::eColorAttachmentOutput)
+			.setSrcAccessMask({})
+			.setDstStageMask(vk::PipelineStageFlagBits::eColorAttachmentOutput)
+			.setDstAccessMask(vk::AccessFlagBits::eColorAttachmentWrite)
+		};
 
 		return device.createRenderPassUnique(vk::RenderPassCreateInfo{}
 			.setAttachments(attachments)
 			.setSubpasses(subpasses)
+			.setDependencies(dependances)
 		);
 	}
 
@@ -589,6 +599,9 @@ namespace TriangleApp_NS
 
 struct TriangleApp::Pimpl
 {
+	/// WARNING: Order of members is important!
+	/// We rely on C++ calling destructors in reverse of declaration order
+
 	std::unique_ptr<GLFWwindow, decltype([](GLFWwindow* window) { glfwDestroyWindow(window); })> window{};
 	vk::UniqueInstance vk_instance{};
 	vk::UniqueSurfaceKHR surface{};
@@ -606,6 +619,8 @@ struct TriangleApp::Pimpl
 	std::vector<vk::UniqueFramebuffer> swap_chain_frame_buffers{};
 	vk::UniqueCommandPool command_pool{};
 	std::vector<vk::UniqueCommandBuffer> command_buffers;
+	vk::UniqueSemaphore image_available_semaphore{};
+	vk::UniqueSemaphore render_finished_semaphore{};
 };
 
 TriangleApp::TriangleApp()
@@ -659,6 +674,7 @@ void TriangleApp::OnInit([[maybe_unused]] std::span<std::string_view> cli)
 
 	pimpl->swap_chain_frame_buffers = TriangleApp_NS::CreateSwapChainFrameBuffers(*pimpl->vk_device, *pimpl->render_pass, pimpl->swap_chain_extent, pimpl->swap_chain_image_views);
 	pimpl->command_pool = TriangleApp_NS::CreateCommandPool(*pimpl->vk_device, indices);
+	pimpl->command_buffers = TriangleApp_NS::CreateCommandBuffers(*pimpl->vk_device, *pimpl->command_pool, pimpl->swap_chain_frame_buffers);
 
 	// Fill command buffers
 	for (std::size_t idx{ 0 }; auto & buffer : pimpl->command_buffers)
@@ -684,10 +700,18 @@ void TriangleApp::OnInit([[maybe_unused]] std::span<std::string_view> cli)
 
 		buffer->draw(3, 1, 0, 0);
 
+		buffer->endRenderPass();
+
 		// End recording
 		buffer->end();
 
 		++idx;
+	}
+
+	// Create semaphores so we can synchronize the draw commands and presentation queues
+	{
+		pimpl->image_available_semaphore = pimpl->vk_device->createSemaphoreUnique(vk::SemaphoreCreateInfo{});
+		pimpl->render_finished_semaphore = pimpl->vk_device->createSemaphoreUnique(vk::SemaphoreCreateInfo{});
 	}
 }
 
@@ -696,7 +720,27 @@ void TriangleApp::MainLoop()
 	while (!glfwWindowShouldClose(pimpl->window.get()))
 	{
 		glfwPollEvents();
+
+		// Do a frame
+		{
+			std::array wait_semaphores{ *pimpl->image_available_semaphore };
+			std::array signal_semaphores{ *pimpl->render_finished_semaphore };
+
+			const auto [acquire_result, image_idx] = pimpl->vk_device->acquireNextImageKHR(pimpl->swap_chain.get(), std::numeric_limits<uint64_t>::max(), pimpl->image_available_semaphore.get(), VK_NULL_HANDLE);
+			assert(acquire_result == vk::Result::eSuccess);
+
+			vk::PipelineStageFlags wait_stages{ vk::PipelineStageFlagBits::eColorAttachmentOutput };
+
+			// Draw frame
+			pimpl->graphics_queue.submit(vk::SubmitInfo{ wait_semaphores, wait_stages, pimpl->command_buffers.at(image_idx).get(), signal_semaphores }, VK_NULL_HANDLE);
+
+			// Present
+			const auto present_result = pimpl->present_queue.presentKHR(vk::PresentInfoKHR{ signal_semaphores, pimpl->swap_chain.get(), image_idx });
+			assert(present_result == vk::Result::eSuccess);
+		}
 	}
+
+	pimpl->vk_device->waitIdle();
 }
 
 void TriangleApp::OnDeinit()
