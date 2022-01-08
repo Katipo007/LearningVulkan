@@ -550,6 +550,26 @@ namespace TriangleApp_NS
 		assert(result == vk::Result::eSuccess);
 		return { std::move(pipeline), std::move(pipeline_layout) };
 	}
+
+	[[nodiscard]] std::vector<vk::UniqueFramebuffer> CreateSwapChainFrameBuffers(vk::Device& device, vk::RenderPass& render_pass, vk::Extent2D swap_chain_extent, std::span<vk::UniqueImageView> swap_chain_image_views)
+	{
+		std::vector<vk::UniqueFramebuffer> frame_buffers{};
+		frame_buffers.reserve(swap_chain_image_views.size());
+
+		std::transform(std::begin(swap_chain_image_views), std::end(swap_chain_image_views), std::back_inserter(frame_buffers), [&](const vk::UniqueImageView& view)
+			{
+				std::array attachments{ *view };
+
+				return device.createFramebufferUnique(vk::FramebufferCreateInfo{}
+					.setRenderPass(render_pass)
+					.setAttachments(attachments)
+					.setWidth(swap_chain_extent.width)
+					.setHeight(swap_chain_extent.height)
+					.setLayers(1U));
+			});
+
+		return frame_buffers;
+	}
 }
 
 struct TriangleApp::Pimpl
@@ -568,6 +588,7 @@ struct TriangleApp::Pimpl
 	vk::UniqueRenderPass render_pass{};
 	vk::UniquePipelineLayout graphics_pipeline_layout{};
 	vk::UniquePipeline graphics_pipeline{};
+	std::vector<vk::UniqueFramebuffer> swap_chain_frame_buffers{};
 
 	~Pimpl()
 	{
@@ -637,6 +658,8 @@ void TriangleApp::OnInit([[maybe_unused]] std::span<std::string_view> cli)
 
 	shaderc::Compiler shader_compiler{};
 	std::tie(pimpl->graphics_pipeline, pimpl->graphics_pipeline_layout) = TriangleApp_NS::CreatePipeline(*pimpl->vk_device, shader_compiler, *pimpl->render_pass, pimpl->swap_chain_extent, TriangleApp_NS::vertex_shader_src, TriangleApp_NS::fragment_shader_src);
+
+	pimpl->swap_chain_frame_buffers = TriangleApp_NS::CreateSwapChainFrameBuffers(*pimpl->vk_device, *pimpl->render_pass, pimpl->swap_chain_extent, pimpl->swap_chain_image_views);
 }
 
 void TriangleApp::MainLoop()
