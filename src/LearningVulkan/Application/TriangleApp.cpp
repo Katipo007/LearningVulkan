@@ -159,7 +159,7 @@ namespace TriangleApp_NS
 		}
 
 		// fallback to the first entry
-		return available_formats.front();
+		return available_formats.front(); 
 	}
 
 	[[nodiscard]] vk::PresentModeKHR ChoosePresentMode(const std::span<const vk::PresentModeKHR> available_modes)
@@ -254,7 +254,7 @@ namespace TriangleApp_NS
 		return vk::createInstanceUnique(create_info);
 	}
 
-	[[nodiscard]] vk::UniqueSwapchainKHR CreateSwapChain(vk::Device& device, const vk::PhysicalDevice& physical_device, const vk::SurfaceKHR& surface, GLFWwindow* window = nullptr)
+	[[nodiscard]] auto CreateSwapChain(vk::Device& device, const vk::PhysicalDevice& physical_device, const vk::SurfaceKHR& surface, GLFWwindow* window = nullptr)
 	{
 		SwapChainSupportDetails swap_chain_support_details{ physical_device, surface };
 		const auto surface_format{ ChooseSwapSurfaceFormat(swap_chain_support_details.formats) };
@@ -288,7 +288,7 @@ namespace TriangleApp_NS
 		create_info.setClipped(VK_TRUE);
 		create_info.setOldSwapchain(VK_NULL_HANDLE); // Previous swap chain which became invalidated (e.g. via window being resized). TODO
 
-		return device.createSwapchainKHRUnique(create_info);
+		return std::make_tuple(device.createSwapchainKHRUnique(create_info), surface_format.format, extent);
 	}
 
 	[[nodiscard]] static std::tuple<vk::UniqueDevice, vk::PhysicalDevice, QueueFamilyIndices> CreateDevice(vk::Instance& instance, const vk::SurfaceKHR& surface)
@@ -337,6 +337,8 @@ struct TriangleApp::Pimpl
 	vk::Queue present_queue{};
 	vk::UniqueSwapchainKHR swap_chain{};
 	std::vector<vk::Image> swap_chain_images{};
+	vk::Format swap_chain_format{};
+	vk::Extent2D swap_chain_extent{};
 };
 
 TriangleApp::TriangleApp()
@@ -372,7 +374,7 @@ void TriangleApp::OnInit([[maybe_unused]] std::span<std::string_view> cli)
 	pimpl->graphics_queue = pimpl->vk_device->getQueue(indices.graphics_family.value(), 0);
 	pimpl->present_queue = pimpl->vk_device->getQueue(indices.present_family.value(), 0);
 
-	pimpl->swap_chain = TriangleApp_NS::CreateSwapChain(*pimpl->vk_device, physical_device, pimpl->surface, pimpl->window.get());
+	std::tie(pimpl->swap_chain, pimpl->swap_chain_format, pimpl->swap_chain_extent) = TriangleApp_NS::CreateSwapChain(*pimpl->vk_device, physical_device, pimpl->surface, pimpl->window.get());
 	pimpl->swap_chain_images = pimpl->vk_device->getSwapchainImagesKHR(*pimpl->swap_chain);
 }
 
@@ -386,6 +388,8 @@ void TriangleApp::MainLoop()
 
 void TriangleApp::OnDeinit()
 {
+	pimpl->swap_chain_extent = vk::Extent2D{};
+	pimpl->swap_chain_format = {};
 	pimpl->swap_chain_images.clear();
 	pimpl->swap_chain.reset();
 	pimpl->present_queue = VK_NULL_HANDLE;
