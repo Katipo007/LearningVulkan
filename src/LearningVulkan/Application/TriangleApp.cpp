@@ -438,8 +438,6 @@ namespace TriangleApp_NS
 
 	[[nodiscard]] std::pair<vk::UniquePipeline,vk::UniquePipelineLayout> CreatePipeline(vk::Device& device, shaderc::Compiler& shader_compiler, vk::RenderPass render_pass, vk::Extent2D extent, std::string_view vertex_src, std::string_view fragment_src)
 	{
-		auto cache = device.createPipelineCacheUnique(vk::PipelineCacheCreateInfo{});
-
 		const auto vertex_module = CompileShader(device, shader_compiler, vertex_src, shaderc_shader_kind::shaderc_glsl_vertex_shader, "vertex_shader"); assert(vertex_module);
 		const auto fragment_module = CompileShader(device, shader_compiler, fragment_src, shaderc_shader_kind::shaderc_glsl_fragment_shader, "fragment_shader"); assert(fragment_module);
 
@@ -495,6 +493,7 @@ namespace TriangleApp_NS
 			.setAlphaToOneEnable(VK_FALSE)
 			;
 
+		[[maybe_unused]]
 		auto depth_stencil_info = vk::PipelineDepthStencilStateCreateInfo{}
 			;
 
@@ -517,6 +516,7 @@ namespace TriangleApp_NS
 			;
 
 		std::vector<vk::DynamicState> dynamic_states = { vk::DynamicState::eViewport, vk::DynamicState::eLineWidth };
+		[[maybe_unused]]
 		auto dynamic_state = vk::PipelineDynamicStateCreateInfo{}
 			.setDynamicStates(dynamic_states)
 			;
@@ -536,14 +536,17 @@ namespace TriangleApp_NS
 			.setPViewportState(&viewport_info)
 			.setPRasterizationState(&rasterizer_info)
 			.setPMultisampleState(&multisampling)
-			.setPDepthStencilState(&depth_stencil_info)
+			//.setPDepthStencilState(&depth_stencil_info)
 			.setPColorBlendState(&colour_blending)
-			.setPDynamicState(&dynamic_state)
+			//.setPDynamicState(&dynamic_state)
 			.setLayout(*pipeline_layout)
 			.setRenderPass(render_pass)
+			.setSubpass(0)
+			.setBasePipelineIndex(-1)
+			.setBasePipelineHandle(VK_NULL_HANDLE)
 			;
 
-		auto [result, pipeline] = device.createGraphicsPipelineUnique(*cache, pipeline_info);
+		auto [result, pipeline] = device.createGraphicsPipelineUnique(VK_NULL_HANDLE, pipeline_info);
 		assert(result == vk::Result::eSuccess);
 		return { std::move(pipeline), std::move(pipeline_layout) };
 	}
@@ -563,8 +566,8 @@ struct TriangleApp::Pimpl
 	vk::Extent2D swap_chain_extent{};
 	std::vector<vk::UniqueImageView> swap_chain_image_views{};
 	vk::UniqueRenderPass render_pass{};
-	vk::UniquePipelineLayout pipeline_layout{};
-	vk::UniquePipeline pipeline{};
+	vk::UniquePipelineLayout graphics_pipeline_layout{};
+	vk::UniquePipeline graphics_pipeline{};
 };
 
 TriangleApp::TriangleApp()
@@ -613,7 +616,7 @@ void TriangleApp::OnInit([[maybe_unused]] std::span<std::string_view> cli)
 	pimpl->render_pass = TriangleApp_NS::CreateRenderPass(*pimpl->vk_device, pimpl->swap_chain_format);
 
 	shaderc::Compiler shader_compiler{};
-	std::tie(pimpl->pipeline, pimpl->pipeline_layout) = TriangleApp_NS::CreatePipeline(*pimpl->vk_device, shader_compiler, *pimpl->render_pass, pimpl->swap_chain_extent, TriangleApp_NS::vertex_shader_src, TriangleApp_NS::fragment_shader_src);
+	std::tie(pimpl->graphics_pipeline, pimpl->graphics_pipeline_layout) = TriangleApp_NS::CreatePipeline(*pimpl->vk_device, shader_compiler, *pimpl->render_pass, pimpl->swap_chain_extent, TriangleApp_NS::vertex_shader_src, TriangleApp_NS::fragment_shader_src);
 }
 
 void TriangleApp::MainLoop()
@@ -626,8 +629,8 @@ void TriangleApp::MainLoop()
 
 void TriangleApp::OnDeinit()
 {
-	pimpl->pipeline.reset();
-	pimpl->pipeline_layout.reset();
+	pimpl->graphics_pipeline.reset();
+	pimpl->graphics_pipeline_layout.reset();
 	pimpl->render_pass.reset();
 	pimpl->swap_chain_image_views.clear();
 	pimpl->swap_chain_extent = vk::Extent2D{};
