@@ -29,7 +29,7 @@ namespace TriangleApp_NS
 #ifdef _DEBUG
 	constexpr bool use_validation_layers{ true };
 #else
-	constexpr bool use_validation_layers{ true };
+	constexpr bool use_validation_layers{ false };
 #endif
 
 	constexpr std::string_view vertex_shader_src
