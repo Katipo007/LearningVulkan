@@ -22,6 +22,7 @@ namespace TriangleApp_NS
 	constexpr glm::ivec2 window_size{ 800, 600 };
 	constexpr std::string_view window_title{ "Vulkan window" };
 
+	constexpr std::size_t max_frames_in_flight{ 2 };
 	constexpr std::array required_device_extensions{ VK_KHR_SWAPCHAIN_EXTENSION_NAME };
 	constexpr std::array validation_layers{ "VK_LAYER_KHRONOS_validation" };
 #ifdef _DEBUG
@@ -619,8 +620,11 @@ struct TriangleApp::Pimpl
 	std::vector<vk::UniqueFramebuffer> swap_chain_frame_buffers{};
 	vk::UniqueCommandPool command_pool{};
 	std::vector<vk::UniqueCommandBuffer> command_buffers;
-	vk::UniqueSemaphore image_available_semaphore{};
-	vk::UniqueSemaphore render_finished_semaphore{};
+	std::vector<vk::UniqueSemaphore> image_available_semaphores{};
+	std::vector<vk::UniqueSemaphore> render_finished_semaphores{};
+	std::vector<vk::UniqueFence> in_flight_fences{};
+	std::vector<vk::Fence> images_in_flight{};
+	std::size_t current_frame{};
 };
 
 TriangleApp::TriangleApp()
@@ -710,8 +714,15 @@ void TriangleApp::OnInit([[maybe_unused]] std::span<std::string_view> cli)
 
 	// Create semaphores so we can synchronize the draw commands and presentation queues
 	{
-		pimpl->image_available_semaphore = pimpl->vk_device->createSemaphoreUnique(vk::SemaphoreCreateInfo{});
-		pimpl->render_finished_semaphore = pimpl->vk_device->createSemaphoreUnique(vk::SemaphoreCreateInfo{});
+		pimpl->image_available_semaphores.reserve(TriangleApp_NS::max_frames_in_flight);
+		pimpl->render_finished_semaphores.reserve(TriangleApp_NS::max_frames_in_flight);
+		pimpl->in_flight_fences.reserve(TriangleApp_NS::max_frames_in_flight);
+
+		std::generate_n(std::back_inserter(pimpl->image_available_semaphores), TriangleApp_NS::max_frames_in_flight, [this]() { return pimpl->vk_device->createSemaphoreUnique(vk::SemaphoreCreateInfo{}); });
+		std::generate_n(std::back_inserter(pimpl->render_finished_semaphores), TriangleApp_NS::max_frames_in_flight, [this]() { return pimpl->vk_device->createSemaphoreUnique(vk::SemaphoreCreateInfo{}); });
+		std::generate_n(std::back_inserter(pimpl->in_flight_fences), TriangleApp_NS::max_frames_in_flight, [this]() { return pimpl->vk_device->createFenceUnique(vk::FenceCreateInfo{ vk::FenceCreateFlagBits::eSignaled }); });
+
+		pimpl->images_in_flight.resize(pimpl->swap_chain_images.size(), {}); // no frames are using an image yet so these are initialised to be empty
 	}
 }
 
@@ -723,21 +734,41 @@ void TriangleApp::MainLoop()
 
 		// Do a frame
 		{
-			std::array wait_semaphores{ *pimpl->image_available_semaphore };
-			std::array signal_semaphores{ *pimpl->render_finished_semaphore };
+			auto& fence = pimpl->in_flight_fences.at(pimpl->current_frame).get();
+			auto& image_available_semaphore = pimpl->image_available_semaphores.at(pimpl->current_frame).get();
+			auto& render_finished_semaphore = pimpl->render_finished_semaphores.at(pimpl->current_frame).get();
 
-			const auto [acquire_result, image_idx] = pimpl->vk_device->acquireNextImageKHR(pimpl->swap_chain.get(), std::numeric_limits<uint64_t>::max(), pimpl->image_available_semaphore.get(), VK_NULL_HANDLE);
+			const auto fence_result = pimpl->vk_device->waitForFences(fence, VK_TRUE, std::numeric_limits<uint64_t>::max()); assert(fence_result == vk::Result::eSuccess);
+
+			const auto [acquire_result, image_idx] = pimpl->vk_device->acquireNextImageKHR(pimpl->swap_chain.get(), std::numeric_limits<uint64_t>::max(), image_available_semaphore, VK_NULL_HANDLE);
 			assert(acquire_result == vk::Result::eSuccess);
+
+			auto& image_in_flight_fence = pimpl->images_in_flight.at(image_idx);
+
+			// Check if a previous frame is still using this image (i.e. there is a fence, wait for it)
+			if (image_in_flight_fence) {
+				const auto result = pimpl->vk_device->waitForFences(image_in_flight_fence, VK_TRUE, std::numeric_limits<uint64_t>::max());
+				assert(result == vk::Result::eSuccess);
+			}
+
+			// mark this image as being used
+			image_in_flight_fence = fence;
+
+			std::array wait_semaphores{ image_available_semaphore };
+			std::array signal_semaphores{ render_finished_semaphore };
 
 			vk::PipelineStageFlags wait_stages{ vk::PipelineStageFlagBits::eColorAttachmentOutput };
 
 			// Draw frame
-			pimpl->graphics_queue.submit(vk::SubmitInfo{ wait_semaphores, wait_stages, pimpl->command_buffers.at(image_idx).get(), signal_semaphores }, VK_NULL_HANDLE);
+			pimpl->vk_device->resetFences(fence);
+			pimpl->graphics_queue.submit(vk::SubmitInfo{ wait_semaphores, wait_stages, pimpl->command_buffers.at(image_idx).get(), signal_semaphores }, fence);
 
 			// Present
 			const auto present_result = pimpl->present_queue.presentKHR(vk::PresentInfoKHR{ signal_semaphores, pimpl->swap_chain.get(), image_idx });
 			assert(present_result == vk::Result::eSuccess);
 		}
+
+		pimpl->current_frame = (pimpl->current_frame + 1) % TriangleApp_NS::max_frames_in_flight;
 	}
 
 	pimpl->vk_device->waitIdle();
