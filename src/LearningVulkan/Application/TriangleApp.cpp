@@ -222,7 +222,7 @@ namespace TriangleApp_NS
 		else if( window )
 		{
 			int window_w{}, window_h{};
-			glfwGetWindowSize(window, &window_w, &window_h);
+			glfwGetFramebufferSize(window, &window_w, &window_h);
 			return {
 				std::clamp(static_cast<uint32_t>(window_w), capabilities.minImageExtent.width, capabilities.maxImageExtent.width),
 				std::clamp(static_cast<uint32_t>(window_h), capabilities.minImageExtent.height, capabilities.maxImageExtent.height)
